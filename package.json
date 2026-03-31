@@ -2,7 +2,11 @@
   "name": "prunejuice",
   "version": "1.0.0",
   "description": "",
-  "main": "dist/index.js",
+  "main": "dist/api.js",
+  "exports": {
+    ".": "./dist/api.js",
+    "./cli": "./dist/index.js"
+  },
   "scripts": {
     "build": "tsc",
     "test": "vitest run",

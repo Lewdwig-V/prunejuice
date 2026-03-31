@@ -7,7 +7,11 @@ import {
   nextStage,
   STAGE_ORDER,
 } from "../src/pipeline.js";
-import type { PipelineState, MutationResult, SaboteurReport } from "../src/types.js";
+import type {
+  PipelineState,
+  MutationResult,
+  SaboteurReport,
+} from "../src/types.js";
 
 // -- Test helpers ------------------------------------------------------------
 
@@ -15,7 +19,10 @@ function killed(mutation: string): MutationResult {
   return { mutation, killed: true, details: "caught by test" };
 }
 
-function survived(mutation: string, classification: "weak_test" | "spec_gap" | "equivalent"): MutationResult {
+function survived(
+  mutation: string,
+  classification: "weak_test" | "spec_gap" | "equivalent",
+): MutationResult {
   return { mutation, killed: false, details: "not caught", classification };
 }
 
@@ -45,14 +52,18 @@ function makeState(overrides: Partial<PipelineState> = {}): PipelineState {
 
 describe("recomputeKillRate", () => {
   it("returns 1.0 when all mutations killed", () => {
-    expect(recomputeKillRate([killed("a"), killed("b"), killed("c")])).toBe(1.0);
+    expect(recomputeKillRate([killed("a"), killed("b"), killed("c")])).toBe(
+      1.0,
+    );
   });
 
   it("returns 0 when no mutations killed (none equivalent)", () => {
-    expect(recomputeKillRate([
-      survived("a", "weak_test"),
-      survived("b", "spec_gap"),
-    ])).toBe(0);
+    expect(
+      recomputeKillRate([
+        survived("a", "weak_test"),
+        survived("b", "spec_gap"),
+      ]),
+    ).toBe(0);
   });
 
   it("excludes equivalent mutants from denominator", () => {
@@ -82,10 +93,12 @@ describe("recomputeKillRate", () => {
   });
 
   it("returns 1.0 when all mutations are equivalent (zero non-equivalent)", () => {
-    expect(recomputeKillRate([
-      survived("a", "equivalent"),
-      survived("b", "equivalent"),
-    ])).toBe(1.0);
+    expect(
+      recomputeKillRate([
+        survived("a", "equivalent"),
+        survived("b", "equivalent"),
+      ]),
+    ).toBe(1.0);
   });
 });
 
@@ -107,10 +120,16 @@ describe("validateSaboteurReport", () => {
       mutationResults: [
         killed("a"),
         // Force an unclassified survivor (simulating bad LLM output)
-        { mutation: "b", killed: false, details: "not caught" } as MutationResult,
+        {
+          mutation: "b",
+          killed: false,
+          details: "not caught",
+        } as MutationResult,
       ],
     });
-    expect(() => validateSaboteurReport(report)).toThrow("without classification");
+    expect(() => validateSaboteurReport(report)).toThrow(
+      "without classification",
+    );
   });
 });
 
@@ -232,10 +251,7 @@ describe("evaluateConvergence", () => {
   it("routes spec_gap survivors to architect", () => {
     const state = makeState({
       saboteurReport: makeReport({
-        mutationResults: [
-          killed("m1"),
-          survived("m2", "spec_gap"),
-        ],
+        mutationResults: [killed("m1"), survived("m2", "spec_gap")],
         killRate: 0.5,
         verdict: "fail",
       }),
@@ -248,10 +264,7 @@ describe("evaluateConvergence", () => {
   it("routes weak_test survivors to mason", () => {
     const state = makeState({
       saboteurReport: makeReport({
-        mutationResults: [
-          killed("m1"),
-          survived("m2", "weak_test"),
-        ],
+        mutationResults: [killed("m1"), survived("m2", "weak_test")],
         killRate: 0.5,
         verdict: "fail",
       }),

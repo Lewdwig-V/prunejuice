@@ -88,12 +88,74 @@ export interface DiscoveredItem {
   resolution?: DiscoveryResolution; // populated after discovery gate
 }
 
+export interface ResolvedDiscovery {
+  item: DiscoveredItem;
+  resolution: DiscoveryResolution;
+}
+
 // -- Convergence loop routing ------------------------------------------------
 
 export interface SurvivorRouting {
   masonTargets: string[]; // weak_test → Mason strengthens assertions
   architectTargets: string[]; // spec_gap → Architect enriches behaviour contract
   skipped: string[]; // equivalent → no action
+}
+
+// -- Pipeline phase names (typed union for LogFn) ----------------------------
+
+export type PipelinePhase =
+  | "distill"
+  | "elicit"
+  | "generate"
+  | "convergence"
+  | "cover"
+  | "weed"
+  | "takeover"
+  | "change"
+  | "sync"
+  | "discovery-gate";
+
+// -- Phase result types ------------------------------------------------------
+
+export interface DriftLocation {
+  filePath: string;
+  detail?: string; // function name, line range, etc.
+}
+
+export interface DriftFinding {
+  location: DriftLocation;
+  specIntent: string;
+  codeReality: string;
+  severity: "high" | "medium" | "low";
+  recommendation: string;
+}
+
+export interface DriftReport {
+  findings: DriftFinding[];
+  specPath: string;
+  filesChecked: string[];
+  overallAssessment: string;
+  hasDrift: boolean; // derived: findings.length > 0
+}
+
+export interface GenerateResult {
+  spec: Spec;
+  concreteSpec: ConcreteSpec;
+  tests: GeneratedTests;
+  implementation: Implementation;
+  saboteurReport: SaboteurReport;
+  converged: boolean;
+  convergenceIterations: number;
+  killRateHistory: number[];
+}
+
+export interface CoverResult {
+  originalKillRate: number;
+  finalKillRate: number;
+  strengtheningIterations: number;
+  killRateHistory: number[];
+  tests: GeneratedTests;
+  report: SaboteurReport;
 }
 
 // -- Information boundary types (what each agent receives) -------------------
