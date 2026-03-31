@@ -96,6 +96,42 @@ export interface SurvivorRouting {
   skipped: string[]; // equivalent → no action
 }
 
+// -- Phase result types ------------------------------------------------------
+
+export interface DriftFinding {
+  location: string;
+  specIntent: string;
+  codeReality: string;
+  severity: "high" | "medium" | "low";
+  recommendation: string;
+}
+
+export interface DriftReport {
+  findings: DriftFinding[];
+  specPath: string;
+  filesChecked: string[];
+  overallAssessment: string;
+}
+
+export interface GenerateResult {
+  spec: Spec;
+  concreteSpec: ConcreteSpec;
+  tests: GeneratedTests;
+  implementation: Implementation;
+  saboteurReport: SaboteurReport;
+  convergenceIterations: number;
+  killRateHistory: number[];
+}
+
+export interface CoverResult {
+  originalKillRate: number;
+  finalKillRate: number;
+  testsAdded: number;
+  iterations: number;
+  tests: GeneratedTests;
+  report: SaboteurReport;
+}
+
 // -- Information boundary types (what each agent receives) -------------------
 
 export interface ArchitectInput {
