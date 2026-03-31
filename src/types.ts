@@ -88,6 +88,11 @@ export interface DiscoveredItem {
   resolution?: DiscoveryResolution; // populated after discovery gate
 }
 
+export interface ResolvedDiscovery {
+  item: DiscoveredItem;
+  resolution: DiscoveryResolution;
+}
+
 // -- Convergence loop routing ------------------------------------------------
 
 export interface SurvivorRouting {
@@ -96,10 +101,29 @@ export interface SurvivorRouting {
   skipped: string[]; // equivalent → no action
 }
 
+// -- Pipeline phase names (typed union for LogFn) ----------------------------
+
+export type PipelinePhase =
+  | "distill"
+  | "elicit"
+  | "generate"
+  | "convergence"
+  | "cover"
+  | "weed"
+  | "takeover"
+  | "change"
+  | "sync"
+  | "discovery-gate";
+
 // -- Phase result types ------------------------------------------------------
 
+export interface DriftLocation {
+  filePath: string;
+  detail?: string; // function name, line range, etc.
+}
+
 export interface DriftFinding {
-  location: string;
+  location: DriftLocation;
   specIntent: string;
   codeReality: string;
   severity: "high" | "medium" | "low";
@@ -111,6 +135,7 @@ export interface DriftReport {
   specPath: string;
   filesChecked: string[];
   overallAssessment: string;
+  hasDrift: boolean; // derived: findings.length > 0
 }
 
 export interface GenerateResult {
@@ -119,6 +144,7 @@ export interface GenerateResult {
   tests: GeneratedTests;
   implementation: Implementation;
   saboteurReport: SaboteurReport;
+  converged: boolean;
   convergenceIterations: number;
   killRateHistory: number[];
 }
@@ -126,8 +152,8 @@ export interface GenerateResult {
 export interface CoverResult {
   originalKillRate: number;
   finalKillRate: number;
-  testsAdded: number;
-  iterations: number;
+  strengtheningIterations: number;
+  killRateHistory: number[];
   tests: GeneratedTests;
   report: SaboteurReport;
 }

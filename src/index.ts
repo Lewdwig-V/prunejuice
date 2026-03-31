@@ -11,20 +11,19 @@ import {
   takeover,
   change,
   sync,
+  defaultLog,
   type DiscoveryHandler,
-  type DiscoveredItem,
   type DiscoveryResolution,
+  type ResolvedDiscovery,
 } from "./api.js";
+import { loadSpec } from "./store.js";
 
-function log(stage: string, msg: string) {
-  const ts = new Date().toISOString().slice(11, 19);
-  process.stderr.write(`[${ts}] [${stage}] ${msg}\n`);
-}
+const log = defaultLog;
 
-// -- Interactive discovery handler (CLI-specific) ----------------------------
+// -- Interactive discovery handler (CLI-specific, return-value protocol) ------
 
 const interactiveDiscoveryHandler: DiscoveryHandler = async (discovered) => {
-  if (discovered.length === 0) return;
+  if (discovered.length === 0) return [];
 
   log("discovery-gate", `${discovered.length} item(s) requiring human review:`);
   for (const item of discovered) {
@@ -35,6 +34,7 @@ const interactiveDiscoveryHandler: DiscoveryHandler = async (discovered) => {
   process.stderr.write("\n");
 
   const rl = createInterface({ input: process.stdin, output: process.stderr });
+  const resolutions: ResolvedDiscovery[] = [];
 
   for (const item of discovered) {
     const answer = await new Promise<string>((resolve) => {
@@ -49,11 +49,13 @@ const interactiveDiscoveryHandler: DiscoveryHandler = async (discovered) => {
       d: "dismissed", dismiss: "dismissed",
       f: "deferred", defer: "deferred",
     };
-    item.resolution = resolutionMap[answer] ?? "deferred";
-    log("discovery-gate", `${item.title}: ${item.resolution}`);
+    const resolution = resolutionMap[answer] ?? "deferred";
+    resolutions.push({ item, resolution });
+    log("discovery-gate", `${item.title}: ${resolution}`);
   }
 
   rl.close();
+  return resolutions;
 };
 
 // -- CLI entry ---------------------------------------------------------------
@@ -92,16 +94,15 @@ async function main() {
       break;
 
     case "elicit":
-      if (!rest) { console.error("Usage: prunejuice elicit <intent>"); process.exit(1); }
+      if (!rest) {
+        console.error("Usage: prunejuice elicit <intent>");
+        process.exit(1);
+      }
       result = await elicit(rest, cwd, opts);
       break;
 
     case "generate":
-      result = await generate(
-        await requireStoredSpec(cwd),
-        cwd,
-        opts,
-      );
+      result = await generate(await requireStoredSpec(cwd), cwd, opts);
       break;
 
     case "cover":
@@ -117,7 +118,10 @@ async function main() {
       break;
 
     case "change":
-      if (!rest) { console.error("Usage: prunejuice change <intent>"); process.exit(1); }
+      if (!rest) {
+        console.error("Usage: prunejuice change <intent>");
+        process.exit(1);
+      }
       result = await change(rest, cwd, opts);
       break;
 
@@ -135,7 +139,6 @@ async function main() {
 }
 
 async function requireStoredSpec(cwd: string) {
-  const { loadSpec } = await import("./store.js");
   const spec = await loadSpec(cwd);
   if (!spec) {
     console.error("No spec found in store. Run 'prunejuice distill' or 'prunejuice elicit <intent>' first.");
@@ -145,7 +148,7 @@ async function requireStoredSpec(cwd: string) {
 }
 
 main().catch((err) => {
-  log("fatal", `Pipeline crashed: ${err instanceof Error ? err.message : String(err)}`);
+  log("sync", `Pipeline crashed: ${err instanceof Error ? err.message : String(err)}`);
   if (err instanceof Error && err.stack) {
     process.stderr.write(err.stack + "\n");
   }

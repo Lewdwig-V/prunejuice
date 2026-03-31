@@ -25,6 +25,9 @@ import {
   writeTestFiles,
   loadSpec,
   saveSpec,
+  saveBehaviourContract,
+  saveTests,
+  saveSaboteurReport,
 } from "./store.js";
 import type {
   Spec,
@@ -37,46 +40,75 @@ import type {
   GenerateResult,
   CoverResult,
   PipelineState,
+  PipelinePhase,
   MutationResult,
   DiscoveredItem,
+  ResolvedDiscovery,
 } from "./types.js";
 
 // -- Logging -----------------------------------------------------------------
 
-export type LogFn = (stage: string, msg: string) => void;
+export type LogFn = (stage: PipelinePhase, msg: string) => void;
 
-const defaultLog: LogFn = (stage, msg) => {
+export const defaultLog: LogFn = (stage, msg) => {
   const ts = new Date().toISOString().slice(11, 19);
   process.stderr.write(`[${ts}] [${stage}] ${msg}\n`);
 };
 
 // -- Pipeline invariant helper -----------------------------------------------
 
-function requireDefined<T>(value: T | undefined, name: string, phase: string): T {
+export function requireDefined<T>(value: T | undefined, name: string, phase: string): T {
   if (value === undefined) {
     throw new Error(`${phase} requires ${name}, but it is undefined.`);
   }
   return value;
 }
 
-function pipelineTimestamp(): string {
+function currentTimestamp(): string {
   return new Date().toISOString();
 }
 
-// -- Discovery gate callback type --------------------------------------------
+// -- Discovery handler (return-value protocol) -------------------------------
 
 /**
  * Called when the Archaeologist surfaces discovered items.
- * The callback should resolve each item's `resolution` field.
- * If not provided, all discoveries default to "deferred".
+ * Must return a resolution for each item.
+ * Input is readonly — mutations are not observed.
  */
-export type DiscoveryHandler = (discovered: DiscoveredItem[]) => Promise<void>;
+export type DiscoveryHandler = (
+  discovered: ReadonlyArray<DiscoveredItem>
+) => Promise<ResolvedDiscovery[]>;
 
-const defaultDiscoveryHandler: DiscoveryHandler = async (discovered) => {
-  for (const item of discovered) {
-    item.resolution = "deferred";
-  }
+export const defaultDiscoveryHandler: DiscoveryHandler = async (discovered) => {
+  return discovered.map((item) => {
+    process.stderr.write(
+      `[discovery-gate] WARNING: "${item.title}" auto-deferred (no discovery handler provided)\n`
+    );
+    return { item, resolution: "deferred" as const };
+  });
 };
+
+function applyDiscoveryResolutions(
+  discovered: DiscoveredItem[],
+  resolutions: ResolvedDiscovery[]
+): void {
+  for (const { item, resolution } of resolutions) {
+    item.resolution = resolution;
+  }
+  // Validate all items were resolved
+  for (const item of discovered) {
+    if (item.resolution === undefined) {
+      throw new Error(
+        `Discovery item "${item.title}" was not resolved by the handler. ` +
+        `Every discovered item must have a resolution.`
+      );
+    }
+  }
+}
+
+// -- Constants ---------------------------------------------------------------
+
+export const COVER_KILL_RATE_THRESHOLD = 0.8;
 
 // -- Phase 1: Distill --------------------------------------------------------
 
@@ -104,12 +136,8 @@ export async function distill(
 /**
  * Create or amend a spec via the Architect agent.
  *
- * For interactive use (e.g., from unslop), pass userMessages as an AsyncIterable
- * that yields user responses. Each iteration refines the spec until no
- * unresolved questions remain.
- *
  * For non-interactive use, pass a string intent. The Architect produces a
- * spec in a single pass.
+ * spec in a single pass. If existingSpec is provided, the Architect amends it.
  */
 export async function elicit(
   intent: string,
@@ -124,7 +152,6 @@ export async function elicit(
 
   log("elicit", `Eliciting specification from intent: "${intent}"`);
 
-  // If amending, include existing spec in the prompt
   const prompt = options.existingSpec
     ? `Amend the following specification based on this new intent: "${intent}"\n\nExisting spec:\n${JSON.stringify(options.existingSpec, null, 2)}`
     : intent;
@@ -140,7 +167,7 @@ export async function elicit(
 
 /**
  * Tests-then-implementation from spec, with convergence loop.
- * This is the full pipeline: Archaeologist → Mason → Builder → Saboteur → Convergence.
+ * Clones the spec before mutation — the caller's original is never modified.
  */
 export async function generate(
   spec: Spec,
@@ -154,10 +181,13 @@ export async function generate(
   const onDiscovery = options.onDiscovery ?? defaultDiscoveryHandler;
   await ensureStore(cwd);
 
+  // Clone spec to avoid mutating the caller's object during convergence
+  const workingSpec = structuredClone(spec);
+
   const state: PipelineState = {
-    userIntent: spec.intent,
+    userIntent: workingSpec.intent,
     cwd,
-    spec,
+    spec: workingSpec,
     convergenceIteration: 0,
     killRateHistory: [],
     radicalHardeningAttempted: false,
@@ -165,64 +195,30 @@ export async function generate(
 
   // Stage 0: Archaeologist → concrete spec + behaviour contract
   log("generate", "Archaeologist analyzing codebase...");
-  state.concreteSpec = await runArchaeologist(spec, cwd);
-  state.behaviourContract = state.concreteSpec.behaviourContract;
-  log("generate", `Strategy targets ${state.concreteSpec.fileTargets.length} files. Contract: ${state.behaviourContract.name}`);
+  state.concreteSpec = await runArchaeologist(workingSpec, cwd);
+  state.behaviourContract = structuredClone(state.concreteSpec.behaviourContract);
+  log("generate", `Strategy targets ${state.concreteSpec.fileTargets.length} files. Contract: ${state.concreteSpec.behaviourContract.name}`);
 
   // Stage 0b: Discovery gate
   if (state.concreteSpec.discovered.length > 0) {
     log("generate", `${state.concreteSpec.discovered.length} discovered item(s) — invoking discovery handler.`);
-    await onDiscovery(state.concreteSpec.discovered);
+    const resolutions = await onDiscovery(state.concreteSpec.discovered);
+    applyDiscoveryResolutions(state.concreteSpec.discovered, resolutions);
   }
 
-  // Run the generate-converge loop
-  await generateConvergeLoop(state, log);
+  // Run Mason → Builder → Saboteur
+  await runTestBuildVerify(state, log);
 
-  return {
-    spec: requireDefined(state.spec, "spec", "generate"),
-    concreteSpec: requireDefined(state.concreteSpec, "concreteSpec", "generate"),
-    tests: requireDefined(state.tests, "tests", "generate"),
-    implementation: requireDefined(state.implementation, "implementation", "generate"),
-    saboteurReport: requireDefined(state.saboteurReport, "saboteurReport", "generate"),
-    convergenceIterations: state.convergenceIteration,
-    killRateHistory: state.killRateHistory,
-  };
-}
-
-// -- Generate-converge loop (shared by generate and orchestrators) -----------
-
-async function generateConvergeLoop(state: PipelineState, log: LogFn): Promise<void> {
-  const ts = pipelineTimestamp();
-  const behaviourContract = requireDefined(state.behaviourContract, "behaviourContract", "generate");
-  const concreteSpec = requireDefined(state.concreteSpec, "concreteSpec", "generate");
-
-  // Stage 1: Mason → tests (Chinese Wall)
-  log("generate", "Mason generating tests from behaviour contract...");
-  state.tests = await runMason(behaviourContract);
-  await writeTestFiles(state.cwd, state.tests, ts);
-  log("generate", `Generated ${state.tests.testFilePaths.length} test file(s).`);
-
-  // Stage 2: Builder → implementation
-  log("generate", "Builder implementing from spec + tests...");
-  state.implementation = await runBuilder(concreteSpec.refinedSpec, concreteSpec, state.tests, state.cwd);
-  await writeImplementationFiles(state.cwd, state.implementation, ts);
-  log("generate", `Wrote ${state.implementation.files.length} file(s): ${state.implementation.summary}`);
-
-  // Stage 3: Saboteur → mutation testing
-  log("generate", "Saboteur running mutation testing...");
-  const rawReport = await runSaboteur(concreteSpec.refinedSpec, state.tests, state.implementation, state.cwd);
-  state.saboteurReport = validateSaboteurReport(rawReport);
-  state.killRateHistory.push(state.saboteurReport.killRate);
-  log("generate", `Kill rate: ${(state.saboteurReport.killRate * 100).toFixed(1)}%`);
-
-  await savePipelineState(state.cwd, state);
-
-  // Convergence loop
+  // Convergence loop (flat — no recursion)
+  let converged = false;
   while (true) {
     const convergence = evaluateConvergence(state);
     log("convergence", `${convergence.action} — ${convergence.reason}`);
 
-    if (convergence.converged) break;
+    if (convergence.converged) {
+      converged = true;
+      break;
+    }
 
     if (convergence.action === "abort") {
       throw new Error(`Convergence failed: ${convergence.reason}`);
@@ -232,33 +228,33 @@ async function generateConvergeLoop(state: PipelineState, log: LogFn): Promise<v
 
     if (convergence.action === "radical-harden") {
       state.radicalHardeningAttempted = true;
-      log("convergence", "Radical spec hardening — re-running full pipeline with mutation feedback.");
-      const spec = requireDefined(state.spec, "spec", "radical-harden");
+      log("convergence", "Radical spec hardening — re-running with mutation feedback.");
       if (state.saboteurReport) {
         const survivorSummary = state.saboteurReport.mutationResults
           .filter((m) => !m.killed)
           .map((m) => `- ${m.mutation}: ${m.details} (${!m.killed ? m.classification : "killed"})`)
           .join("\n");
-        spec.constraints.push(`[MUTATION FEEDBACK] Survivors:\n${survivorSummary}`);
+        workingSpec.constraints.push(`[MUTATION FEEDBACK] Survivors:\n${survivorSummary}`);
       }
-      state.concreteSpec = await runArchaeologist(spec, state.cwd);
-      state.behaviourContract = state.concreteSpec.behaviourContract;
-      await generateConvergeLoop(state, log);
-      return;
+      // Re-run Archaeologist → Mason → Builder → Saboteur
+      state.concreteSpec = await runArchaeologist(workingSpec, cwd);
+      state.behaviourContract = structuredClone(state.concreteSpec.behaviourContract);
+      await runTestBuildVerify(state, log);
+      continue;
     }
 
     if (convergence.action === "retry-architect") {
       log("convergence", `Re-running from Archaeologist (iteration ${state.convergenceIteration}/${MAX_CONVERGENCE_ITERATIONS})`);
-      const spec = requireDefined(state.spec, "spec", "retry-architect");
       if (convergence.routing) {
-        spec.constraints.push(
+        workingSpec.constraints.push(
           `[SPEC GAP FEEDBACK] Under-constrained:\n- ${convergence.routing.architectTargets.join("\n- ")}`
         );
       }
-      state.concreteSpec = await runArchaeologist(spec, state.cwd);
-      state.behaviourContract = state.concreteSpec.behaviourContract;
-      await generateConvergeLoop(state, log);
-      return;
+      // Re-run Archaeologist → Mason → Builder → Saboteur
+      state.concreteSpec = await runArchaeologist(workingSpec, cwd);
+      state.behaviourContract = structuredClone(state.concreteSpec.behaviourContract);
+      await runTestBuildVerify(state, log);
+      continue;
     }
 
     if (convergence.action === "retry-mason") {
@@ -269,22 +265,52 @@ async function generateConvergeLoop(state: PipelineState, log: LogFn): Promise<v
           ...convergence.routing.masonTargets.map((t) => `[STRENGTHEN] Test gap: ${t}`)
         );
       }
-      // Re-run Mason → Builder → Saboteur → converge
-      const innerTs = pipelineTimestamp();
-      state.tests = await runMason(requireDefined(state.behaviourContract, "behaviourContract", "retry-mason"));
-      await writeTestFiles(state.cwd, state.tests, innerTs);
-      state.implementation = await runBuilder(
-        concreteSpec.refinedSpec, concreteSpec, state.tests, state.cwd
-      );
-      await writeImplementationFiles(state.cwd, state.implementation, innerTs);
-      const innerRaw = await runSaboteur(concreteSpec.refinedSpec, state.tests, state.implementation, state.cwd);
-      state.saboteurReport = validateSaboteurReport(innerRaw);
-      state.killRateHistory.push(state.saboteurReport.killRate);
-      log("convergence", `Kill rate: ${(state.saboteurReport.killRate * 100).toFixed(1)}%`);
-      await savePipelineState(state.cwd, state);
+      // Re-run Mason → Builder → Saboteur (reads current state.concreteSpec, no stale closure)
+      await runTestBuildVerify(state, log);
       continue;
     }
   }
+
+  return {
+    spec: workingSpec,
+    concreteSpec: requireDefined(state.concreteSpec, "concreteSpec", "generate"),
+    tests: requireDefined(state.tests, "tests", "generate"),
+    implementation: requireDefined(state.implementation, "implementation", "generate"),
+    saboteurReport: requireDefined(state.saboteurReport, "saboteurReport", "generate"),
+    converged,
+    convergenceIterations: state.convergenceIteration,
+    killRateHistory: state.killRateHistory,
+  };
+}
+
+// -- Mason → Builder → Saboteur helper (shared by generate and convergence) --
+
+async function runTestBuildVerify(state: PipelineState, log: LogFn): Promise<void> {
+  const ts = currentTimestamp();
+  const behaviourContract = requireDefined(state.behaviourContract, "behaviourContract", "runTestBuildVerify");
+  // Always read concreteSpec from state — never from a closure capture
+  const concreteSpec = requireDefined(state.concreteSpec, "concreteSpec", "runTestBuildVerify");
+
+  // Mason → tests (Chinese Wall)
+  log("generate", "Mason generating tests from behaviour contract...");
+  state.tests = await runMason(behaviourContract);
+  await writeTestFiles(state.cwd, state.tests, ts);
+  log("generate", `Generated ${state.tests.testFilePaths.length} test file(s).`);
+
+  // Builder → implementation
+  log("generate", "Builder implementing from spec + tests...");
+  state.implementation = await runBuilder(concreteSpec.refinedSpec, concreteSpec, state.tests, state.cwd);
+  await writeImplementationFiles(state.cwd, state.implementation, ts);
+  log("generate", `Wrote ${state.implementation.files.length} file(s): ${state.implementation.summary}`);
+
+  // Saboteur → mutation testing
+  log("generate", "Saboteur running mutation testing...");
+  const rawReport = await runSaboteur(concreteSpec.refinedSpec, state.tests, state.implementation, state.cwd);
+  state.saboteurReport = validateSaboteurReport(rawReport);
+  state.killRateHistory.push(state.saboteurReport.killRate);
+  log("generate", `Kill rate: ${(state.saboteurReport.killRate * 100).toFixed(1)}%`);
+
+  await savePipelineState(state.cwd, state);
 }
 
 // -- Phase 4: Cover ----------------------------------------------------------
@@ -292,6 +318,7 @@ async function generateConvergeLoop(state: PipelineState, log: LogFn): Promise<v
 /**
  * Find and fill gaps in test coverage via targeted mutation testing.
  * Runs Saboteur to find weak tests, then Mason to strengthen them.
+ * Persists updated tests, contract, and reports after each iteration.
  */
 export async function cover(
   cwd: string,
@@ -312,16 +339,22 @@ export async function cover(
   let tests = requireDefined(existing.tests, "tests", "cover");
   const implementation = requireDefined(existing.implementation, "implementation", "cover");
 
+  // Clone behaviour contract to avoid mutating loaded state
+  let behaviourContract = structuredClone(
+    requireDefined(existing.behaviourContract, "behaviourContract", "cover")
+  );
+
   // Initial Saboteur run
   log("cover", "Running Saboteur to find test coverage gaps...");
   let rawReport = await runSaboteur(spec, tests, implementation, cwd);
   let report = validateSaboteurReport(rawReport);
   const originalKillRate = report.killRate;
+  const killRateHistory = [report.killRate];
   log("cover", `Initial kill rate: ${(originalKillRate * 100).toFixed(1)}%`);
 
   let iterations = 0;
 
-  while (report.killRate < 0.8 && iterations < maxIterations) {
+  while (report.killRate < COVER_KILL_RATE_THRESHOLD && iterations < maxIterations) {
     const survivors = report.mutationResults
       .filter((m): m is Extract<MutationResult, { killed: false }> => !m.killed)
       .map((m) => ({ mutation: m.mutation, classification: m.classification }));
@@ -337,27 +370,33 @@ export async function cover(
     log("cover", `Iteration ${iterations}: strengthening ${routing.masonTargets.length} weak tests.`);
 
     // Enrich behaviour contract with feedback
-    const behaviourContract = requireDefined(existing.behaviourContract, "behaviourContract", "cover");
     behaviourContract.invariants.push(
       ...routing.masonTargets.map((t) => `[STRENGTHEN] Test gap: ${t}`)
     );
 
     // Re-run Mason
-    const ts = pipelineTimestamp();
+    const ts = currentTimestamp();
     tests = await runMason(behaviourContract);
     await writeTestFiles(cwd, tests, ts);
+    await saveTests(cwd, tests);
+
+    // Persist enriched contract
+    await saveBehaviourContract(cwd, behaviourContract);
 
     // Re-run Saboteur
     rawReport = await runSaboteur(spec, tests, implementation, cwd);
     report = validateSaboteurReport(rawReport);
+    killRateHistory.push(report.killRate);
+    await saveSaboteurReport(cwd, report);
+
     log("cover", `Kill rate: ${(report.killRate * 100).toFixed(1)}%`);
   }
 
   return {
     originalKillRate,
     finalKillRate: report.killRate,
-    testsAdded: iterations,
-    iterations,
+    strengtheningIterations: iterations,
+    killRateHistory,
     tests,
     report,
   };
@@ -437,6 +476,10 @@ export async function change(
 
   const existingSpec = await loadSpec(cwd);
 
+  if (!existingSpec) {
+    log("change", "WARNING: No existing spec found. Creating a new spec instead of amending. Run 'distill' first to infer a spec from existing code.");
+  }
+
   log("change", `Amending spec with intent: "${intent}"`);
   const spec = await elicit(intent, cwd, { existingSpec: existingSpec ?? undefined, log });
 
@@ -480,11 +523,14 @@ export type {
   SaboteurReport,
   DriftReport,
   DriftFinding,
+  DriftLocation,
   GenerateResult,
   CoverResult,
   DiscoveredItem,
   DiscoveryResolution,
+  ResolvedDiscovery,
   MutationResult,
   SurvivorClassification,
   TruncatedHash,
+  PipelinePhase,
 } from "./types.js";

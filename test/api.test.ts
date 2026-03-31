@@ -1,14 +1,73 @@
 import { describe, it, expect } from "vitest";
+import {
+  requireDefined,
+  defaultDiscoveryHandler,
+  COVER_KILL_RATE_THRESHOLD,
+} from "../src/api.js";
+import type { DiscoveredItem } from "../src/types.js";
 
-/**
- * API composition tests.
- *
- * The phase functions (distill, elicit, generate, cover, weed) call real agents
- * so they can't be unit tested without API keys. These tests verify the module
- * structure, type exports, and compositional contracts.
- */
+// -- requireDefined ----------------------------------------------------------
 
-// Verify all phases and orchestrators are exported
+describe("requireDefined", () => {
+  it("returns the value when defined", () => {
+    expect(requireDefined(42, "count", "test")).toBe(42);
+  });
+
+  it("returns the value when falsy but defined", () => {
+    expect(requireDefined(0, "count", "test")).toBe(0);
+    expect(requireDefined("", "name", "test")).toBe("");
+    expect(requireDefined(false, "flag", "test")).toBe(false);
+  });
+
+  it("throws with descriptive message when undefined", () => {
+    expect(() => requireDefined(undefined, "spec", "Architect")).toThrow(
+      "Architect requires spec, but it is undefined."
+    );
+  });
+
+  it("includes both name and phase in error message", () => {
+    try {
+      requireDefined(undefined, "behaviourContract", "Mason");
+    } catch (e) {
+      expect((e as Error).message).toContain("Mason");
+      expect((e as Error).message).toContain("behaviourContract");
+    }
+  });
+});
+
+// -- defaultDiscoveryHandler -------------------------------------------------
+
+describe("defaultDiscoveryHandler", () => {
+  it("returns deferred resolution for all items", async () => {
+    const items: DiscoveredItem[] = [
+      { title: "Missing validation", observation: "No input check", question: "Add validation?" },
+      { title: "Edge case", observation: "Null not handled", question: "Throw or return?" },
+    ];
+
+    const resolutions = await defaultDiscoveryHandler(items);
+    expect(resolutions).toHaveLength(2);
+    expect(resolutions[0]!.resolution).toBe("deferred");
+    expect(resolutions[1]!.resolution).toBe("deferred");
+    expect(resolutions[0]!.item).toBe(items[0]);
+    expect(resolutions[1]!.item).toBe(items[1]);
+  });
+
+  it("returns empty array for empty input", async () => {
+    const resolutions = await defaultDiscoveryHandler([]);
+    expect(resolutions).toEqual([]);
+  });
+});
+
+// -- COVER_KILL_RATE_THRESHOLD -----------------------------------------------
+
+describe("COVER_KILL_RATE_THRESHOLD", () => {
+  it("is 0.8 (80%)", () => {
+    expect(COVER_KILL_RATE_THRESHOLD).toBe(0.8);
+  });
+});
+
+// -- Module exports ----------------------------------------------------------
+
 describe("api exports", () => {
   it("exports all five phases", async () => {
     const api = await import("../src/api.js");
@@ -26,16 +85,15 @@ describe("api exports", () => {
     expect(typeof api.sync).toBe("function");
   });
 
-  it("re-exports all domain types", async () => {
-    // This test verifies that the type re-exports compile.
-    // If any type is missing from the re-export, TypeScript would
-    // catch it at compile time, but this confirms the module loads.
+  it("exports defaultLog and requireDefined", async () => {
     const api = await import("../src/api.js");
-    expect(api).toBeDefined();
+    expect(typeof api.defaultLog).toBe("function");
+    expect(typeof api.requireDefined).toBe("function");
   });
 });
 
-// Verify the new agent entry points exist
+// -- Agent entry points ------------------------------------------------------
+
 describe("agent entry points", () => {
   it("exports runDistiller from archaeologist module", async () => {
     const { runDistiller } = await import("../src/agents/archaeologist.js");

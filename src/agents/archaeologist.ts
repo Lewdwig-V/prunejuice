@@ -48,7 +48,7 @@ export async function runArchaeologist(
   const result = await queryAgent({
     systemPrompt: SYSTEM_PROMPT,
     prompt: `Given this specification, analyze the codebase and produce a concrete implementation strategy.\n\nSpecification:\n${JSON.stringify(spec, null, 2)}`,
-    tools: [...TOOLS],
+    tools: TOOLS as unknown as string[],
     cwd,
     outputSchema: {
       type: "object",
@@ -155,7 +155,7 @@ export async function runDistiller(cwd: string): Promise<Spec> {
   const result = await queryAgent({
     systemPrompt: DISTILL_PROMPT,
     prompt: "Analyze the codebase and infer a specification from the existing implementation.",
-    tools: [...TOOLS],
+    tools: TOOLS as unknown as string[],
     cwd,
     outputSchema: {
       type: "object",
@@ -189,7 +189,7 @@ You MUST respond with a single JSON object (no markdown fences, no commentary):
 {
   "findings": [
     {
-      "location": "file path and/or function name",
+      "location": { "filePath": "path/to/file.ts", "detail": "optional function name or line range" },
       "specIntent": "what the spec says should happen",
       "codeReality": "what the code actually does",
       "severity": "high" | "medium" | "low",
@@ -210,7 +210,7 @@ export async function runWeeder(spec: Spec, cwd: string): Promise<DriftReport> {
 
 ## Specification
 ${JSON.stringify(spec, null, 2)}`,
-    tools: [...TOOLS],
+    tools: TOOLS as unknown as string[],
     cwd,
     outputSchema: {
       type: "object",
@@ -220,7 +220,14 @@ ${JSON.stringify(spec, null, 2)}`,
           items: {
             type: "object",
             properties: {
-              location: { type: "string" },
+              location: {
+                type: "object",
+                properties: {
+                  filePath: { type: "string" },
+                  detail: { type: "string" },
+                },
+                required: ["filePath"],
+              },
               specIntent: { type: "string" },
               codeReality: { type: "string" },
               severity: { type: "string", enum: ["high", "medium", "low"] },
@@ -237,5 +244,7 @@ ${JSON.stringify(spec, null, 2)}`,
     },
   });
 
-  return result as DriftReport;
+  const report = result as DriftReport;
+  report.hasDrift = report.findings.length > 0;
+  return report;
 }
