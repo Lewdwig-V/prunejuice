@@ -155,6 +155,15 @@ export function evaluateConvergence(state: PipelineState): ConvergenceResult {
     return { converged: true, action: "proceed", reason: `Kill rate ${(report.killRate * 100).toFixed(1)}% >= ${KILL_RATE_THRESHOLD * 100}%` };
   }
 
+  // Compliance violations with acceptable kill rate — route to Architect (spec-level concern)
+  if (report.complianceViolations.length > 0 && report.killRate >= KILL_RATE_THRESHOLD) {
+    return {
+      converged: false,
+      action: "retry-architect",
+      reason: `${report.complianceViolations.length} compliance violation(s) with kill rate ${(report.killRate * 100).toFixed(1)}%: ${report.complianceViolations.join("; ")}`,
+    };
+  }
+
   // Radical hardening already attempted — abort
   if (state.radicalHardeningAttempted) {
     return {
