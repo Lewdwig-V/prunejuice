@@ -62,7 +62,12 @@ export type SurvivorClassification = "weak_test" | "spec_gap" | "equivalent";
 
 export type MutationResult =
   | { mutation: string; killed: true; details: string }
-  | { mutation: string; killed: false; details: string; classification: SurvivorClassification };
+  | {
+      mutation: string;
+      killed: false;
+      details: string;
+      classification: SurvivorClassification;
+    };
 
 export interface SaboteurReport {
   mutationResults: MutationResult[];
@@ -86,9 +91,9 @@ export interface DiscoveredItem {
 // -- Convergence loop routing ------------------------------------------------
 
 export interface SurvivorRouting {
-  masonTargets: string[];     // weak_test → Mason strengthens assertions
+  masonTargets: string[]; // weak_test → Mason strengthens assertions
   architectTargets: string[]; // spec_gap → Architect enriches behaviour contract
-  skipped: string[];          // equivalent → no action
+  skipped: string[]; // equivalent → no action
 }
 
 // -- Information boundary types (what each agent receives) -------------------

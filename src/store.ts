@@ -31,7 +31,7 @@ export async function ensureStore(cwd: string): Promise<void> {
       await mkdir(dir, { recursive: true });
     } catch (err) {
       throw new Error(
-        `Failed to create prunejuice store directory "${dir}": ${err instanceof Error ? err.message : String(err)}`
+        `Failed to create prunejuice store directory "${dir}": ${err instanceof Error ? err.message : String(err)}`,
       );
     }
   }
@@ -40,12 +40,20 @@ export async function ensureStore(cwd: string): Promise<void> {
 // -- Error-discriminating file read ------------------------------------------
 
 function isEnoent(err: unknown): boolean {
-  return err instanceof Error && "code" in err && (err as NodeJS.ErrnoException).code === "ENOENT";
+  return (
+    err instanceof Error &&
+    "code" in err &&
+    (err as NodeJS.ErrnoException).code === "ENOENT"
+  );
 }
 
 // -- Artifact I/O ------------------------------------------------------------
 
-async function writeArtifact(cwd: string, name: string, data: unknown): Promise<TruncatedHash> {
+async function writeArtifact(
+  cwd: string,
+  name: string,
+  data: unknown,
+): Promise<TruncatedHash> {
   const content = JSON.stringify(data, null, 2);
   const path = storePath(cwd, "artifacts", `${name}.json`);
   await writeFile(path, content, "utf-8");
@@ -59,18 +67,25 @@ async function readArtifact<T>(cwd: string, name: string): Promise<T | null> {
     content = await readFile(path, "utf-8");
   } catch (err: unknown) {
     if (isEnoent(err)) return null;
-    throw new Error(`Failed to read artifact "${name}" at ${path}: ${err instanceof Error ? err.message : String(err)}`);
+    throw new Error(
+      `Failed to read artifact "${name}" at ${path}: ${err instanceof Error ? err.message : String(err)}`,
+    );
   }
   try {
     return JSON.parse(content) as T;
   } catch (err: unknown) {
-    throw new Error(`Corrupt artifact "${name}" at ${path}: ${err instanceof Error ? err.message : String(err)}`);
+    throw new Error(
+      `Corrupt artifact "${name}" at ${path}: ${err instanceof Error ? err.message : String(err)}`,
+    );
   }
 }
 
 // -- Typed artifact accessors ------------------------------------------------
 
-export async function saveSpec(cwd: string, spec: Spec): Promise<TruncatedHash> {
+export async function saveSpec(
+  cwd: string,
+  spec: Spec,
+): Promise<TruncatedHash> {
   return writeArtifact(cwd, "spec", spec);
 }
 
@@ -78,23 +93,36 @@ export async function loadSpec(cwd: string): Promise<Spec | null> {
   return readArtifact<Spec>(cwd, "spec");
 }
 
-export async function saveConcreteSpec(cwd: string, concreteSpec: ConcreteSpec): Promise<TruncatedHash> {
+export async function saveConcreteSpec(
+  cwd: string,
+  concreteSpec: ConcreteSpec,
+): Promise<TruncatedHash> {
   return writeArtifact(cwd, "concrete-spec", concreteSpec);
 }
 
-export async function loadConcreteSpec(cwd: string): Promise<ConcreteSpec | null> {
+export async function loadConcreteSpec(
+  cwd: string,
+): Promise<ConcreteSpec | null> {
   return readArtifact<ConcreteSpec>(cwd, "concrete-spec");
 }
 
-export async function saveBehaviourContract(cwd: string, contract: BehaviourContract): Promise<TruncatedHash> {
+export async function saveBehaviourContract(
+  cwd: string,
+  contract: BehaviourContract,
+): Promise<TruncatedHash> {
   return writeArtifact(cwd, "behaviour-contract", contract);
 }
 
-export async function loadBehaviourContract(cwd: string): Promise<BehaviourContract | null> {
+export async function loadBehaviourContract(
+  cwd: string,
+): Promise<BehaviourContract | null> {
   return readArtifact<BehaviourContract>(cwd, "behaviour-contract");
 }
 
-export async function saveTests(cwd: string, tests: GeneratedTests): Promise<TruncatedHash> {
+export async function saveTests(
+  cwd: string,
+  tests: GeneratedTests,
+): Promise<TruncatedHash> {
   return writeArtifact(cwd, "tests", tests);
 }
 
@@ -102,19 +130,29 @@ export async function loadTests(cwd: string): Promise<GeneratedTests | null> {
   return readArtifact<GeneratedTests>(cwd, "tests");
 }
 
-export async function saveImplementation(cwd: string, impl: Implementation): Promise<TruncatedHash> {
+export async function saveImplementation(
+  cwd: string,
+  impl: Implementation,
+): Promise<TruncatedHash> {
   return writeArtifact(cwd, "implementation", impl);
 }
 
-export async function loadImplementation(cwd: string): Promise<Implementation | null> {
+export async function loadImplementation(
+  cwd: string,
+): Promise<Implementation | null> {
   return readArtifact<Implementation>(cwd, "implementation");
 }
 
-export async function saveSaboteurReport(cwd: string, report: SaboteurReport): Promise<TruncatedHash> {
+export async function saveSaboteurReport(
+  cwd: string,
+  report: SaboteurReport,
+): Promise<TruncatedHash> {
   return writeArtifact(cwd, "saboteur-report", report);
 }
 
-export async function loadSaboteurReport(cwd: string): Promise<SaboteurReport | null> {
+export async function loadSaboteurReport(
+  cwd: string,
+): Promise<SaboteurReport | null> {
   return readArtifact<SaboteurReport>(cwd, "saboteur-report");
 }
 
@@ -126,24 +164,34 @@ interface ConvergenceState {
   radicalHardeningAttempted: boolean;
 }
 
-async function saveConvergenceState(cwd: string, state: ConvergenceState): Promise<void> {
+async function saveConvergenceState(
+  cwd: string,
+  state: ConvergenceState,
+): Promise<void> {
   await writeArtifact(cwd, "convergence", state);
 }
 
-async function loadConvergenceState(cwd: string): Promise<ConvergenceState | null> {
+async function loadConvergenceState(
+  cwd: string,
+): Promise<ConvergenceState | null> {
   return readArtifact<ConvergenceState>(cwd, "convergence");
 }
 
 // -- Hash lookups (for freshness classification) -----------------------------
 
-export async function artifactHash(cwd: string, name: string): Promise<TruncatedHash | null> {
+export async function artifactHash(
+  cwd: string,
+  name: string,
+): Promise<TruncatedHash | null> {
   const path = storePath(cwd, "artifacts", `${name}.json`);
   let content: string;
   try {
     content = await readFile(path, "utf-8");
   } catch (err: unknown) {
     if (isEnoent(err)) return null;
-    throw new Error(`Failed to read artifact "${name}" for hashing at ${path}: ${err instanceof Error ? err.message : String(err)}`);
+    throw new Error(
+      `Failed to read artifact "${name}" for hashing at ${path}: ${err instanceof Error ? err.message : String(err)}`,
+    );
   }
   return truncatedHash(content);
 }
@@ -151,7 +199,17 @@ export async function artifactHash(cwd: string, name: string): Promise<Truncated
 // -- Comment style detection -------------------------------------------------
 
 export function commentStyleForPath(path: string): "#" | "//" {
-  const hashCommentExtensions = [".py", ".sh", ".rb", ".yaml", ".yml", ".toml", ".pl", ".r", ".jl"];
+  const hashCommentExtensions = [
+    ".py",
+    ".sh",
+    ".rb",
+    ".yaml",
+    ".yml",
+    ".toml",
+    ".pl",
+    ".r",
+    ".jl",
+  ];
   const ext = path.slice(path.lastIndexOf(".")).toLowerCase();
   return hashCommentExtensions.includes(ext) ? "#" : "//";
 }
@@ -163,18 +221,20 @@ export async function writeManagedFile(
   filePath: string,
   content: string,
   specArtifactName: string,
-  timestamp: string
+  timestamp: string,
 ): Promise<void> {
   const specHash = await artifactHash(cwd, specArtifactName);
   if (!specHash) {
-    throw new Error(`Cannot write managed file: spec artifact "${specArtifactName}" not found in store`);
+    throw new Error(
+      `Cannot write managed file: spec artifact "${specArtifactName}" not found in store`,
+    );
   }
 
   const outputHash = truncatedHash(content);
   const header = formatHeader(
     `.prunejuice/artifacts/${specArtifactName}.json`,
     { specHash, outputHash, generated: timestamp },
-    commentStyleForPath(filePath)
+    commentStyleForPath(filePath),
   );
 
   const fullContent = `${header}\n\n${content}`;
@@ -186,17 +246,23 @@ export async function writeManagedFile(
 export async function writeImplementationFiles(
   cwd: string,
   implementation: Implementation,
-  timestamp: string
+  timestamp: string,
 ): Promise<void> {
   for (const file of implementation.files) {
-    await writeManagedFile(cwd, file.path, file.content, "concrete-spec", timestamp);
+    await writeManagedFile(
+      cwd,
+      file.path,
+      file.content,
+      "concrete-spec",
+      timestamp,
+    );
   }
 }
 
 export async function writeTestFiles(
   cwd: string,
   tests: GeneratedTests,
-  timestamp: string
+  timestamp: string,
 ): Promise<void> {
   if (tests.testFilePaths.length === 0) {
     throw new Error("Mason produced no test file paths");
@@ -204,20 +270,30 @@ export async function writeTestFiles(
   if (tests.testFilePaths.length > 1) {
     throw new Error(
       `writeTestFiles: Mason declared ${tests.testFilePaths.length} test file paths but only single-file output is supported. ` +
-      `Paths: ${tests.testFilePaths.join(", ")}`
+        `Paths: ${tests.testFilePaths.join(", ")}`,
     );
   }
   const filePath = tests.testFilePaths[0]!;
-  await writeManagedFile(cwd, filePath, tests.testCode, "behaviour-contract", timestamp);
+  await writeManagedFile(
+    cwd,
+    filePath,
+    tests.testCode,
+    "behaviour-contract",
+    timestamp,
+  );
 }
 
 // -- Full pipeline state persistence -----------------------------------------
 
-export async function savePipelineState(cwd: string, state: PipelineState): Promise<void> {
+export async function savePipelineState(
+  cwd: string,
+  state: PipelineState,
+): Promise<void> {
   // Save sequentially to avoid partial persistence on failure
   if (state.spec) await saveSpec(cwd, state.spec);
   if (state.concreteSpec) await saveConcreteSpec(cwd, state.concreteSpec);
-  if (state.behaviourContract) await saveBehaviourContract(cwd, state.behaviourContract);
+  if (state.behaviourContract)
+    await saveBehaviourContract(cwd, state.behaviourContract);
   if (state.tests) await saveTests(cwd, state.tests);
   if (state.implementation) await saveImplementation(cwd, state.implementation);
   if (state.saboteurReport) await saveSaboteurReport(cwd, state.saboteurReport);
@@ -228,8 +304,18 @@ export async function savePipelineState(cwd: string, state: PipelineState): Prom
   });
 }
 
-export async function loadPipelineState(cwd: string): Promise<Partial<PipelineState>> {
-  const [spec, concreteSpec, behaviourContract, tests, implementation, saboteurReport, convergence] = await Promise.all([
+export async function loadPipelineState(
+  cwd: string,
+): Promise<Partial<PipelineState>> {
+  const [
+    spec,
+    concreteSpec,
+    behaviourContract,
+    tests,
+    implementation,
+    saboteurReport,
+    convergence,
+  ] = await Promise.all([
     loadSpec(cwd),
     loadConcreteSpec(cwd),
     loadBehaviourContract(cwd),
@@ -244,7 +330,8 @@ export async function loadPipelineState(cwd: string): Promise<Partial<PipelineSt
   if (concreteSpec) state.concreteSpec = concreteSpec;
   // Prefer independently-saved behaviour contract (may be enriched during convergence)
   if (behaviourContract) state.behaviourContract = behaviourContract;
-  else if (concreteSpec) state.behaviourContract = concreteSpec.behaviourContract;
+  else if (concreteSpec)
+    state.behaviourContract = concreteSpec.behaviourContract;
   if (tests) state.tests = tests;
   if (implementation) state.implementation = implementation;
   if (saboteurReport) state.saboteurReport = saboteurReport;

@@ -1,4 +1,9 @@
-import type { Spec, ConcreteSpec, GeneratedTests, Implementation } from "../types.js";
+import type {
+  Spec,
+  ConcreteSpec,
+  GeneratedTests,
+  Implementation,
+} from "../types.js";
 import { queryAgent } from "../pipeline.js";
 
 const SYSTEM_PROMPT = `You are the Builder — an implementation specialist.
@@ -37,7 +42,7 @@ export async function runBuilder(
   spec: Spec,
   concreteSpec: ConcreteSpec,
   tests: GeneratedTests,
-  cwd: string
+  cwd: string,
 ): Promise<Implementation> {
   const result = await queryAgent({
     systemPrompt: SYSTEM_PROMPT,

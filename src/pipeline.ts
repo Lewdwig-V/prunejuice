@@ -10,7 +10,11 @@ import type {
   SaboteurReport,
   MutationResult,
 } from "./types.js";
-import { classifyFreshness, actionForState, type FreshnessInput } from "./hashchain.js";
+import {
+  classifyFreshness,
+  actionForState,
+  type FreshnessInput,
+} from "./hashchain.js";
 
 // -- Agent execution helper --------------------------------------------------
 
@@ -48,10 +52,16 @@ export async function queryAgent(params: AgentQuery): Promise<unknown> {
   })) {
     if (message.type === "result") {
       if (message.subtype !== "success") {
-        const errors = "errors" in message ? (message as { errors: string[] }).errors : [];
-        throw new Error(`Agent failed (${message.subtype}): ${errors.join(", ")}`);
+        const errors =
+          "errors" in message ? (message as { errors: string[] }).errors : [];
+        throw new Error(
+          `Agent failed (${message.subtype}): ${errors.join(", ")}`,
+        );
       }
-      const success = message as { result: string; structured_output?: unknown };
+      const success = message as {
+        result: string;
+        structured_output?: unknown;
+      };
       if (success.structured_output !== undefined) {
         result = success.structured_output;
       } else {
@@ -59,7 +69,7 @@ export async function queryAgent(params: AgentQuery): Promise<unknown> {
           result = JSON.parse(success.result);
         } catch {
           throw new Error(
-            `Agent returned non-JSON output. Raw result (first 500 chars): ${success.result.slice(0, 500)}`
+            `Agent returned non-JSON output. Raw result (first 500 chars): ${success.result.slice(0, 500)}`,
           );
         }
       }
@@ -76,7 +86,9 @@ export async function queryAgent(params: AgentQuery): Promise<unknown> {
 
 export function recomputeKillRate(mutationResults: MutationResult[]): number {
   const killed = mutationResults.filter((m) => m.killed).length;
-  const equivalent = mutationResults.filter((m) => !m.killed && m.classification === "equivalent").length;
+  const equivalent = mutationResults.filter(
+    (m) => !m.killed && m.classification === "equivalent",
+  ).length;
   const nonEquivalent = mutationResults.length - equivalent;
   if (nonEquivalent === 0) return 1; // no non-equivalent mutations → vacuously passing
   return killed / nonEquivalent;
@@ -88,7 +100,7 @@ export function validateSaboteurReport(raw: SaboteurReport): SaboteurReport {
     if (!m.killed && !("classification" in m && m.classification)) {
       throw new Error(
         `Saboteur returned survivor without classification: "${m.mutation}". ` +
-        `Every non-killed mutation must be classified as weak_test, spec_gap, or equivalent.`
+          `Every non-killed mutation must be classified as weak_test, spec_gap, or equivalent.`,
       );
     }
   }
@@ -96,7 +108,7 @@ export function validateSaboteurReport(raw: SaboteurReport): SaboteurReport {
   const recomputed = recomputeKillRate(raw.mutationResults);
   if (Math.abs(recomputed - raw.killRate) > 0.01) {
     process.stderr.write(
-      `[pipeline] WARNING: Saboteur reported killRate ${raw.killRate.toFixed(3)} but recomputed ${recomputed.toFixed(3)} — using recomputed value\n`
+      `[pipeline] WARNING: Saboteur reported killRate ${raw.killRate.toFixed(3)} but recomputed ${recomputed.toFixed(3)} — using recomputed value\n`,
     );
   }
   return { ...raw, killRate: recomputed };
@@ -105,7 +117,10 @@ export function validateSaboteurReport(raw: SaboteurReport): SaboteurReport {
 // -- Survivor routing (pure function, exhaustive switch) --------------------
 
 export function routeSurvivors(
-  survivors: Array<{ mutation: string; classification: SurvivorClassification }>
+  survivors: Array<{
+    mutation: string;
+    classification: SurvivorClassification;
+  }>,
 ): SurvivorRouting {
   const masonTargets: string[] = [];
   const architectTargets: string[] = [];
@@ -113,9 +128,15 @@ export function routeSurvivors(
 
   for (const { mutation, classification } of survivors) {
     switch (classification) {
-      case "weak_test": masonTargets.push(mutation); break;
-      case "spec_gap": architectTargets.push(mutation); break;
-      case "equivalent": skipped.push(mutation); break;
+      case "weak_test":
+        masonTargets.push(mutation);
+        break;
+      case "spec_gap":
+        architectTargets.push(mutation);
+        break;
+      case "equivalent":
+        skipped.push(mutation);
+        break;
       default: {
         const _exhaustive: never = classification;
         throw new Error(`Unknown survivor classification: ${_exhaustive}`);
@@ -123,9 +144,12 @@ export function routeSurvivors(
     }
   }
 
-  const totalRouted = masonTargets.length + architectTargets.length + skipped.length;
+  const totalRouted =
+    masonTargets.length + architectTargets.length + skipped.length;
   if (totalRouted !== survivors.length) {
-    throw new Error(`Routing partition invariant violated: routed ${totalRouted} but received ${survivors.length}`);
+    throw new Error(
+      `Routing partition invariant violated: routed ${totalRouted} but received ${survivors.length}`,
+    );
   }
 
   return { masonTargets, architectTargets, skipped };
@@ -139,7 +163,12 @@ const ENTROPY_IMPROVEMENT_THRESHOLD = 0.05;
 
 export interface ConvergenceResult {
   converged: boolean;
-  action: "proceed" | "retry-mason" | "retry-architect" | "radical-harden" | "abort";
+  action:
+    | "proceed"
+    | "retry-mason"
+    | "retry-architect"
+    | "radical-harden"
+    | "abort";
   reason: string;
   routing?: SurvivorRouting;
 }
@@ -147,16 +176,30 @@ export interface ConvergenceResult {
 export function evaluateConvergence(state: PipelineState): ConvergenceResult {
   const report = state.saboteurReport;
   if (!report) {
-    return { converged: false, action: "abort", reason: "No Saboteur report available" };
+    return {
+      converged: false,
+      action: "abort",
+      reason: "No Saboteur report available",
+    };
   }
 
   // Pass: kill rate above threshold and no compliance violations
-  if (report.killRate >= KILL_RATE_THRESHOLD && report.complianceViolations.length === 0) {
-    return { converged: true, action: "proceed", reason: `Kill rate ${(report.killRate * 100).toFixed(1)}% >= ${KILL_RATE_THRESHOLD * 100}%` };
+  if (
+    report.killRate >= KILL_RATE_THRESHOLD &&
+    report.complianceViolations.length === 0
+  ) {
+    return {
+      converged: true,
+      action: "proceed",
+      reason: `Kill rate ${(report.killRate * 100).toFixed(1)}% >= ${KILL_RATE_THRESHOLD * 100}%`,
+    };
   }
 
   // Compliance violations with acceptable kill rate — route to Architect (spec-level concern)
-  if (report.complianceViolations.length > 0 && report.killRate >= KILL_RATE_THRESHOLD) {
+  if (
+    report.complianceViolations.length > 0 &&
+    report.killRate >= KILL_RATE_THRESHOLD
+  ) {
     return {
       converged: false,
       action: "retry-architect",
@@ -262,7 +305,7 @@ You MUST respond with a single JSON object:
 
 export async function coordinatorDecision(
   state: PipelineState,
-  context: string
+  context: string,
 ): Promise<CoordinatorDecision> {
   const result = await queryAgent({
     systemPrompt: COORDINATOR_PROMPT,
@@ -275,7 +318,17 @@ export async function coordinatorDecision(
       type: "object",
       properties: {
         action: { type: "string", enum: ["proceed", "retry", "abort"] },
-        retryFrom: { type: "string", enum: ["architect", "archaeologist", "discovery-gate", "mason", "builder", "saboteur"] },
+        retryFrom: {
+          type: "string",
+          enum: [
+            "architect",
+            "archaeologist",
+            "discovery-gate",
+            "mason",
+            "builder",
+            "saboteur",
+          ],
+        },
         reason: { type: "string" },
       },
       required: ["action", "reason"],
@@ -287,7 +340,10 @@ export async function coordinatorDecision(
 
 // -- Freshness check (wires classifier into pipeline decisions) ---------------
 
-export async function checkFreshness(input: FreshnessInput, state: PipelineState): Promise<"skip" | "regenerate" | "abort"> {
+export async function checkFreshness(
+  input: FreshnessInput,
+  state: PipelineState,
+): Promise<"skip" | "regenerate" | "abort"> {
   const freshnessState = classifyFreshness(input);
   const action = actionForState(freshnessState);
 
@@ -299,7 +355,10 @@ export async function checkFreshness(input: FreshnessInput, state: PipelineState
     case "error":
       throw new Error(`Freshness error: ${action.description}`);
     case "coordinate": {
-      const decision = await coordinatorDecision(state, `Freshness state: ${freshnessState}. ${action.description}`);
+      const decision = await coordinatorDecision(
+        state,
+        `Freshness state: ${freshnessState}. ${action.description}`,
+      );
       if (decision.action === "abort") {
         return "abort";
       }
@@ -330,7 +389,7 @@ export function nextStage(current: PipelineStage): PipelineStage | null {
 export async function runStagesFrom(
   start: PipelineStage,
   state: PipelineState,
-  runStage: (stage: PipelineStage, state: PipelineState) => Promise<void>
+  runStage: (stage: PipelineStage, state: PipelineState) => Promise<void>,
 ): Promise<void> {
   const startIdx = STAGE_ORDER.indexOf(start);
   for (const stage of STAGE_ORDER.slice(startIdx)) {
