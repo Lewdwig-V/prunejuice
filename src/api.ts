@@ -346,7 +346,7 @@ export async function cover(
 
   // Initial Saboteur run
   log("cover", "Running Saboteur to find test coverage gaps...");
-  let rawReport = await runSaboteur(spec, tests, implementation, cwd);
+  let rawReport = await runSaboteur(concreteSpec.refinedSpec, tests, implementation, cwd);
   let report = validateSaboteurReport(rawReport);
   const originalKillRate = report.killRate;
   const killRateHistory = [report.killRate];
