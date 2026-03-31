@@ -11,6 +11,7 @@ Your job is to examine existing code, infer patterns, refine an abstract spec in
 3. Project a strategy: which files to modify/create, which patterns to follow.
 4. Refine the original spec with concrete details grounded in the codebase.
 5. Derive a behavioural contract that captures the expected behaviour as testable preconditions, postconditions, invariants, and scenarios. Ground these in what the code should do, informed by what it currently does and what the spec requires.
+6. Surface any correctness requirements implied by the strategy that the spec doesn't explicitly state. These are "discovered" items — transient findings that must be resolved (promoted to the spec or dismissed) before generation proceeds.
 
 ## Output Format
 You MUST respond with a single JSON object (no markdown fences, no commentary):
@@ -28,11 +29,15 @@ You MUST respond with a single JSON object (no markdown fences, no commentary):
     "scenarios": [
       { "given": "initial state", "when": "action", "then": "expected outcome" }
     ]
-  }
+  },
+  "discovered": [
+    { "title": "short name", "observation": "what you found", "question": "what the human should decide" }
+  ]
 }
 
 Ground every recommendation in what you actually observe in the code. Do not speculate about code you haven't read.
-The behavioural contract is consumed by a separate test-generation agent that has NO access to the codebase — make the contract self-contained and precise enough to generate tests without seeing source code.`;
+The behavioural contract is consumed by a separate test-generation agent that has NO access to the codebase — make the contract self-contained and precise enough to generate tests without seeing source code.
+The "discovered" array should be empty if all correctness requirements are covered by the spec. Only surface genuine ambiguities — not things the spec already addresses.`;
 
 const TOOLS = ["Read", "Grep", "Glob", "LS", "Bash"] as const;
 
@@ -81,8 +86,20 @@ export async function runArchaeologist(spec: Spec, cwd: string): Promise<Concret
           },
           required: ["name", "preconditions", "postconditions", "invariants", "scenarios"],
         },
+        discovered: {
+          type: "array",
+          items: {
+            type: "object",
+            properties: {
+              title: { type: "string" },
+              observation: { type: "string" },
+              question: { type: "string" },
+            },
+            required: ["title", "observation", "question"],
+          },
+        },
       },
-      required: ["existingPatterns", "integrationPoints", "fileTargets", "strategyProjection", "refinedSpec", "behaviourContract"],
+      required: ["existingPatterns", "integrationPoints", "fileTargets", "strategyProjection", "refinedSpec", "behaviourContract", "discovered"],
     },
   });
 

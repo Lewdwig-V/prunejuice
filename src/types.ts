@@ -17,6 +17,7 @@ export interface ConcreteSpec {
   strategyProjection: string;
   refinedSpec: Spec;
   behaviourContract: BehaviourContract;
+  discovered: DiscoveredItem[]; // correctness requirements the spec doesn't cover
 }
 
 export interface BehaviourContract {
@@ -45,15 +46,35 @@ export interface Implementation {
   summary: string;
 }
 
+export type SurvivorClassification = "weak_test" | "spec_gap" | "equivalent";
+
+export interface MutationResult {
+  mutation: string;
+  killed: boolean;
+  details: string;
+  classification?: SurvivorClassification; // only set for survivors
+}
+
 export interface SaboteurReport {
-  mutationResults: Array<{
-    mutation: string;
-    killed: boolean;
-    details: string;
-  }>;
+  mutationResults: MutationResult[];
   complianceViolations: string[];
   verdict: "pass" | "fail";
   recommendations: string[];
+  killRate: number; // 0-1, adjusted (excluding equivalent)
+}
+
+// Discovery gate — Archaeologist surfaces correctness requirements the spec doesn't cover
+export interface DiscoveredItem {
+  title: string;
+  observation: string;
+  question: string;
+}
+
+// Convergence loop routing
+export interface SurvivorRouting {
+  masonTargets: string[];     // weak_test → Mason strengthens assertions
+  architectTargets: string[]; // spec_gap → Architect enriches behaviour contract
+  skipped: string[];          // equivalent → no action
 }
 
 // What each agent receives — enforces information boundaries at the type level
@@ -94,11 +115,15 @@ export interface PipelineState {
   tests?: GeneratedTests;
   implementation?: Implementation;
   saboteurReport?: SaboteurReport;
+  // Convergence loop tracking
+  convergenceIteration: number;
+  killRateHistory: number[]; // kill rates from each Saboteur run
 }
 
 export type PipelineStage =
   | "architect"
   | "archaeologist"
+  | "discovery-gate"
   | "mason"
   | "builder"
   | "saboteur";
