@@ -45,9 +45,12 @@ const interactiveDiscoveryHandler: DiscoveryHandler = async (discovered) => {
     });
 
     const resolutionMap: Record<string, DiscoveryResolution> = {
-      p: "promoted", promote: "promoted",
-      d: "dismissed", dismiss: "dismissed",
-      f: "deferred", defer: "deferred",
+      p: "promoted",
+      promote: "promoted",
+      d: "dismissed",
+      dismiss: "dismissed",
+      f: "deferred",
+      defer: "deferred",
     };
     const resolution = resolutionMap[answer] ?? "deferred";
     resolutions.push({ item, resolution });
@@ -141,14 +144,19 @@ async function main() {
 async function requireStoredSpec(cwd: string) {
   const spec = await loadSpec(cwd);
   if (!spec) {
-    console.error("No spec found in store. Run 'prunejuice distill' or 'prunejuice elicit <intent>' first.");
+    console.error(
+      "No spec found in store. Run 'prunejuice distill' or 'prunejuice elicit <intent>' first.",
+    );
     process.exit(1);
   }
   return spec;
 }
 
 main().catch((err) => {
-  log("sync", `Pipeline crashed: ${err instanceof Error ? err.message : String(err)}`);
+  log(
+    "sync",
+    `Pipeline crashed: ${err instanceof Error ? err.message : String(err)}`,
+  );
   if (err instanceof Error && err.stack) {
     process.stderr.write(err.stack + "\n");
   }

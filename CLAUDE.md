@@ -6,19 +6,19 @@ Multi-agent coordinator harness built on the Claude Code SDK. SDK-native impleme
 
 ### Five Phases + Three Orchestrators
 
-| Phase | Function | What it does |
-|-------|----------|-------------|
-| **Distill** | `distill(cwd)` | Infer spec from existing code |
-| **Elicit** | `elicit(intent, cwd)` | Create/amend spec from user intent |
+| Phase        | Function              | What it does                                            |
+| ------------ | --------------------- | ------------------------------------------------------- |
+| **Distill**  | `distill(cwd)`        | Infer spec from existing code                           |
+| **Elicit**   | `elicit(intent, cwd)` | Create/amend spec from user intent                      |
 | **Generate** | `generate(spec, cwd)` | Tests → implementation → mutation testing → convergence |
-| **Cover** | `cover(cwd)` | Find and fill test coverage gaps |
-| **Weed** | `weed(cwd)` | Detect intent drift between spec and code |
+| **Cover**    | `cover(cwd)`          | Find and fill test coverage gaps                        |
+| **Weed**     | `weed(cwd)`           | Detect intent drift between spec and code               |
 
-| Orchestrator | Composition | Use case |
-|-------------|-------------|----------|
+| Orchestrator | Composition                 | Use case                             |
+| ------------ | --------------------------- | ------------------------------------ |
 | **Takeover** | distill → elicit → generate | Bring existing code under management |
-| **Change** | elicit (amend) → generate | Record a change, regenerate |
-| **Sync** | generate from stored spec | Regenerate stale files |
+| **Change**   | elicit (amend) → generate   | Record a change, regenerate          |
+| **Sync**     | generate from stored spec   | Regenerate stale files               |
 
 ### Library API (`src/api.ts`)
 
@@ -32,15 +32,15 @@ Each phase accepts a `log` callback and optional `onDiscovery` handler. The CLI 
 
 ### Agent Roles
 
-| Agent | Role | Tools | Information Boundary |
-|-------|------|-------|---------------------|
-| Architect | Intent → Spec | Read, Grep, Glob, LS | Sees everything |
-| Archaeologist | Code analysis → Concrete spec + behaviour contract | Read, Grep, Glob, LS, Bash | No tests during generate |
-| Archaeologist (distill) | Code → inferred Spec | Read, Grep, Glob, LS, Bash | No existing spec |
-| Archaeologist (weed) | Spec + code → DriftReport | Read, Grep, Glob, LS, Bash | Sees both for comparison |
-| Mason | Behaviour contract → Tests | None (prompt-only) | Only sees behaviour contract [Chinese Wall] |
-| Builder | Spec + Tests → Implementation | Read, Grep, Glob, LS, Bash, Write, Edit | No Mason derivation logic |
-| Saboteur | Mutation testing + compliance | Read, Grep, Glob, LS, Bash | No Builder generation logic |
+| Agent                   | Role                                               | Tools                                   | Information Boundary                        |
+| ----------------------- | -------------------------------------------------- | --------------------------------------- | ------------------------------------------- |
+| Architect               | Intent → Spec                                      | Read, Grep, Glob, LS                    | Sees everything                             |
+| Archaeologist           | Code analysis → Concrete spec + behaviour contract | Read, Grep, Glob, LS, Bash              | No tests during generate                    |
+| Archaeologist (distill) | Code → inferred Spec                               | Read, Grep, Glob, LS, Bash              | No existing spec                            |
+| Archaeologist (weed)    | Spec + code → DriftReport                          | Read, Grep, Glob, LS, Bash              | Sees both for comparison                    |
+| Mason                   | Behaviour contract → Tests                         | None (prompt-only)                      | Only sees behaviour contract [Chinese Wall] |
+| Builder                 | Spec + Tests → Implementation                      | Read, Grep, Glob, LS, Bash, Write, Edit | No Mason derivation logic                   |
+| Saboteur                | Mutation testing + compliance                      | Read, Grep, Glob, LS, Bash              | No Builder generation logic                 |
 
 ### Pipeline Flow (Generate Phase)
 
@@ -109,11 +109,11 @@ prunejuice sync                       # regenerate stale files
 
 ## Key Differences from Unslop
 
-| Aspect | Unslop (filesystem) | Prunejuice (SDK) |
-|--------|---------------------|------------------|
-| Control plane | Filesystem — agents read headers and act | TypeScript — library functions dispatch agents |
-| Coordination | Implicit (file existence + hash state) | Explicit (composable phase functions + convergence loop) |
-| Information isolation | Prompt construction | Structural (`query()` calls with different tool sets) |
-| Interactive elicit | Built-in (runs in Claude Code session) | Callback-based (`DiscoveryHandler`, future `AsyncIterable`) |
-| Integration | Claude Code plugin | npm library (`import { generate } from "prunejuice"`) |
-| Context handoff | Manual (structured handoff artifacts) | Automatic (each `query()` call is a fresh context) |
+| Aspect                | Unslop (filesystem)                      | Prunejuice (SDK)                                            |
+| --------------------- | ---------------------------------------- | ----------------------------------------------------------- |
+| Control plane         | Filesystem — agents read headers and act | TypeScript — library functions dispatch agents              |
+| Coordination          | Implicit (file existence + hash state)   | Explicit (composable phase functions + convergence loop)    |
+| Information isolation | Prompt construction                      | Structural (`query()` calls with different tool sets)       |
+| Interactive elicit    | Built-in (runs in Claude Code session)   | Callback-based (`DiscoveryHandler`, future `AsyncIterable`) |
+| Integration           | Claude Code plugin                       | npm library (`import { generate } from "prunejuice"`)       |
+| Context handoff       | Manual (structured handoff artifacts)    | Automatic (each `query()` call is a fresh context)          |

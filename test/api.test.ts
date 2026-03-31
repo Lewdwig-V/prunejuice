@@ -21,7 +21,7 @@ describe("requireDefined", () => {
 
   it("throws with descriptive message when undefined", () => {
     expect(() => requireDefined(undefined, "spec", "Architect")).toThrow(
-      "Architect requires spec, but it is undefined."
+      "Architect requires spec, but it is undefined.",
     );
   });
 
@@ -40,8 +40,16 @@ describe("requireDefined", () => {
 describe("defaultDiscoveryHandler", () => {
   it("returns deferred resolution for all items", async () => {
     const items: DiscoveredItem[] = [
-      { title: "Missing validation", observation: "No input check", question: "Add validation?" },
-      { title: "Edge case", observation: "Null not handled", question: "Throw or return?" },
+      {
+        title: "Missing validation",
+        observation: "No input check",
+        question: "Add validation?",
+      },
+      {
+        title: "Edge case",
+        observation: "Null not handled",
+        question: "Throw or return?",
+      },
     ];
 
     const resolutions = await defaultDiscoveryHandler(items);

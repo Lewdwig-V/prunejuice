@@ -154,7 +154,8 @@ Be precise. Distinguish between intentional behaviour and accidental implementat
 export async function runDistiller(cwd: string): Promise<Spec> {
   const result = await queryAgent({
     systemPrompt: DISTILL_PROMPT,
-    prompt: "Analyze the codebase and infer a specification from the existing implementation.",
+    prompt:
+      "Analyze the codebase and infer a specification from the existing implementation.",
     tools: TOOLS as unknown as string[],
     cwd,
     outputSchema: {
@@ -233,7 +234,13 @@ ${JSON.stringify(spec, null, 2)}`,
               severity: { type: "string", enum: ["high", "medium", "low"] },
               recommendation: { type: "string" },
             },
-            required: ["location", "specIntent", "codeReality", "severity", "recommendation"],
+            required: [
+              "location",
+              "specIntent",
+              "codeReality",
+              "severity",
+              "recommendation",
+            ],
           },
         },
         specPath: { type: "string" },

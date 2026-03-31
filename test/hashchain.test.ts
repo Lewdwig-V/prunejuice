@@ -123,73 +123,91 @@ describe("classifyFreshness", () => {
   });
 
   it("returns stale when spec changed but code unchanged", () => {
-    expect(classifyFreshness({
-      ...base,
-      currentSpecHash: hash("new spec"),
-    })).toBe("stale");
+    expect(
+      classifyFreshness({
+        ...base,
+        currentSpecHash: hash("new spec"),
+      }),
+    ).toBe("stale");
   });
 
   it("returns modified when code changed but spec unchanged", () => {
-    expect(classifyFreshness({
-      ...base,
-      currentOutputHash: hash("edited code"),
-    })).toBe("modified");
+    expect(
+      classifyFreshness({
+        ...base,
+        currentOutputHash: hash("edited code"),
+      }),
+    ).toBe("modified");
   });
 
   it("returns conflict when both changed", () => {
-    expect(classifyFreshness({
-      ...base,
-      currentSpecHash: hash("new spec"),
-      currentOutputHash: hash("edited code"),
-    })).toBe("conflict");
+    expect(
+      classifyFreshness({
+        ...base,
+        currentSpecHash: hash("new spec"),
+        currentOutputHash: hash("edited code"),
+      }),
+    ).toBe("conflict");
   });
 
   it("returns pending when no code file exists and no provenance", () => {
-    expect(classifyFreshness({
-      ...base,
-      codeFileExists: false,
-      headerSpecHash: null,
-      headerOutputHash: null,
-    })).toBe("pending");
+    expect(
+      classifyFreshness({
+        ...base,
+        codeFileExists: false,
+        headerSpecHash: null,
+        headerOutputHash: null,
+      }),
+    ).toBe("pending");
   });
 
   it("returns structural when code vanished but had provenance", () => {
-    expect(classifyFreshness({
-      ...base,
-      codeFileExists: false,
-      // headerSpecHash is still set — had provenance
-    })).toBe("structural");
+    expect(
+      classifyFreshness({
+        ...base,
+        codeFileExists: false,
+        // headerSpecHash is still set — had provenance
+      }),
+    ).toBe("structural");
   });
 
   it("returns ghost-stale when upstream changed (takes priority)", () => {
-    expect(classifyFreshness({
-      ...base,
-      upstreamChanged: true,
-    })).toBe("ghost-stale");
+    expect(
+      classifyFreshness({
+        ...base,
+        upstreamChanged: true,
+      }),
+    ).toBe("ghost-stale");
   });
 
   it("returns test-drifted when spec changed since tests", () => {
-    expect(classifyFreshness({
-      ...base,
-      specChangedSinceTests: true,
-    })).toBe("test-drifted");
+    expect(
+      classifyFreshness({
+        ...base,
+        specChangedSinceTests: true,
+      }),
+    ).toBe("test-drifted");
   });
 
   it("returns pending when no header hashes (unmanaged file)", () => {
-    expect(classifyFreshness({
-      ...base,
-      headerSpecHash: null,
-      headerOutputHash: null,
-    })).toBe("pending");
+    expect(
+      classifyFreshness({
+        ...base,
+        headerSpecHash: null,
+        headerOutputHash: null,
+      }),
+    ).toBe("pending");
   });
 
   it("upstream changed takes priority over spec/code changes", () => {
-    expect(classifyFreshness({
-      ...base,
-      currentSpecHash: hash("new spec"),
-      currentOutputHash: hash("edited code"),
-      upstreamChanged: true,
-    })).toBe("ghost-stale");
+    expect(
+      classifyFreshness({
+        ...base,
+        currentSpecHash: hash("new spec"),
+        currentOutputHash: hash("edited code"),
+        upstreamChanged: true,
+      }),
+    ).toBe("ghost-stale");
   });
 });
 
@@ -197,8 +215,14 @@ describe("classifyFreshness", () => {
 
 describe("actionForState", () => {
   const allStates: FreshnessState[] = [
-    "fresh", "stale", "modified", "conflict",
-    "pending", "structural", "ghost-stale", "test-drifted",
+    "fresh",
+    "stale",
+    "modified",
+    "conflict",
+    "pending",
+    "structural",
+    "ghost-stale",
+    "test-drifted",
   ];
 
   it("handles every state (exhaustive)", () => {

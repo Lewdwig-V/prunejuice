@@ -7,7 +7,11 @@
  */
 
 import { runArchitect } from "./agents/architect.js";
-import { runArchaeologist, runDistiller, runWeeder } from "./agents/archaeologist.js";
+import {
+  runArchaeologist,
+  runDistiller,
+  runWeeder,
+} from "./agents/archaeologist.js";
 import { runMason } from "./agents/mason.js";
 import { runBuilder } from "./agents/builder.js";
 import { runSaboteur } from "./agents/saboteur.js";
@@ -57,7 +61,11 @@ export const defaultLog: LogFn = (stage, msg) => {
 
 // -- Pipeline invariant helper -----------------------------------------------
 
-export function requireDefined<T>(value: T | undefined, name: string, phase: string): T {
+export function requireDefined<T>(
+  value: T | undefined,
+  name: string,
+  phase: string,
+): T {
   if (value === undefined) {
     throw new Error(`${phase} requires ${name}, but it is undefined.`);
   }
@@ -76,13 +84,13 @@ function currentTimestamp(): string {
  * Input is readonly — mutations are not observed.
  */
 export type DiscoveryHandler = (
-  discovered: ReadonlyArray<DiscoveredItem>
+  discovered: ReadonlyArray<DiscoveredItem>,
 ) => Promise<ResolvedDiscovery[]>;
 
 export const defaultDiscoveryHandler: DiscoveryHandler = async (discovered) => {
   return discovered.map((item) => {
     process.stderr.write(
-      `[discovery-gate] WARNING: "${item.title}" auto-deferred (no discovery handler provided)\n`
+      `[discovery-gate] WARNING: "${item.title}" auto-deferred (no discovery handler provided)\n`,
     );
     return { item, resolution: "deferred" as const };
   });
@@ -90,7 +98,7 @@ export const defaultDiscoveryHandler: DiscoveryHandler = async (discovered) => {
 
 function applyDiscoveryResolutions(
   discovered: DiscoveredItem[],
-  resolutions: ResolvedDiscovery[]
+  resolutions: ResolvedDiscovery[],
 ): void {
   for (const { item, resolution } of resolutions) {
     item.resolution = resolution;
@@ -100,7 +108,7 @@ function applyDiscoveryResolutions(
     if (item.resolution === undefined) {
       throw new Error(
         `Discovery item "${item.title}" was not resolved by the handler. ` +
-        `Every discovered item must have a resolution.`
+          `Every discovered item must have a resolution.`,
       );
     }
   }
@@ -118,7 +126,7 @@ export const COVER_KILL_RATE_THRESHOLD = 0.8;
  */
 export async function distill(
   cwd: string,
-  options: { log?: LogFn } = {}
+  options: { log?: LogFn } = {},
 ): Promise<Spec> {
   const log = options.log ?? defaultLog;
   await ensureStore(cwd);
@@ -126,7 +134,10 @@ export async function distill(
   log("distill", "Inferring specification from existing code...");
   const spec = await runDistiller(cwd);
   await saveSpec(cwd, spec);
-  log("distill", `Inferred spec with ${spec.requirements.length} requirements.`);
+  log(
+    "distill",
+    `Inferred spec with ${spec.requirements.length} requirements.`,
+  );
 
   return spec;
 }
@@ -145,7 +156,7 @@ export async function elicit(
   options: {
     existingSpec?: Spec;
     log?: LogFn;
-  } = {}
+  } = {},
 ): Promise<Spec> {
   const log = options.log ?? defaultLog;
   await ensureStore(cwd);
@@ -175,7 +186,7 @@ export async function generate(
   options: {
     log?: LogFn;
     onDiscovery?: DiscoveryHandler;
-  } = {}
+  } = {},
 ): Promise<GenerateResult> {
   const log = options.log ?? defaultLog;
   const onDiscovery = options.onDiscovery ?? defaultDiscoveryHandler;
@@ -196,12 +207,20 @@ export async function generate(
   // Stage 0: Archaeologist → concrete spec + behaviour contract
   log("generate", "Archaeologist analyzing codebase...");
   state.concreteSpec = await runArchaeologist(workingSpec, cwd);
-  state.behaviourContract = structuredClone(state.concreteSpec.behaviourContract);
-  log("generate", `Strategy targets ${state.concreteSpec.fileTargets.length} files. Contract: ${state.concreteSpec.behaviourContract.name}`);
+  state.behaviourContract = structuredClone(
+    state.concreteSpec.behaviourContract,
+  );
+  log(
+    "generate",
+    `Strategy targets ${state.concreteSpec.fileTargets.length} files. Contract: ${state.concreteSpec.behaviourContract.name}`,
+  );
 
   // Stage 0b: Discovery gate
   if (state.concreteSpec.discovered.length > 0) {
-    log("generate", `${state.concreteSpec.discovered.length} discovered item(s) — invoking discovery handler.`);
+    log(
+      "generate",
+      `${state.concreteSpec.discovered.length} discovered item(s) — invoking discovery handler.`,
+    );
     const resolutions = await onDiscovery(state.concreteSpec.discovered);
     applyDiscoveryResolutions(state.concreteSpec.discovered, resolutions);
   }
@@ -228,41 +247,65 @@ export async function generate(
 
     if (convergence.action === "radical-harden") {
       state.radicalHardeningAttempted = true;
-      log("convergence", "Radical spec hardening — re-running with mutation feedback.");
+      log(
+        "convergence",
+        "Radical spec hardening — re-running with mutation feedback.",
+      );
       if (state.saboteurReport) {
         const survivorSummary = state.saboteurReport.mutationResults
           .filter((m) => !m.killed)
-          .map((m) => `- ${m.mutation}: ${m.details} (${!m.killed ? m.classification : "killed"})`)
+          .map(
+            (m) =>
+              `- ${m.mutation}: ${m.details} (${!m.killed ? m.classification : "killed"})`,
+          )
           .join("\n");
-        workingSpec.constraints.push(`[MUTATION FEEDBACK] Survivors:\n${survivorSummary}`);
+        workingSpec.constraints.push(
+          `[MUTATION FEEDBACK] Survivors:\n${survivorSummary}`,
+        );
       }
       // Re-run Archaeologist → Mason → Builder → Saboteur
       state.concreteSpec = await runArchaeologist(workingSpec, cwd);
-      state.behaviourContract = structuredClone(state.concreteSpec.behaviourContract);
+      state.behaviourContract = structuredClone(
+        state.concreteSpec.behaviourContract,
+      );
       await runTestBuildVerify(state, log);
       continue;
     }
 
     if (convergence.action === "retry-architect") {
-      log("convergence", `Re-running from Archaeologist (iteration ${state.convergenceIteration}/${MAX_CONVERGENCE_ITERATIONS})`);
+      log(
+        "convergence",
+        `Re-running from Archaeologist (iteration ${state.convergenceIteration}/${MAX_CONVERGENCE_ITERATIONS})`,
+      );
       if (convergence.routing) {
         workingSpec.constraints.push(
-          `[SPEC GAP FEEDBACK] Under-constrained:\n- ${convergence.routing.architectTargets.join("\n- ")}`
+          `[SPEC GAP FEEDBACK] Under-constrained:\n- ${convergence.routing.architectTargets.join("\n- ")}`,
         );
       }
       // Re-run Archaeologist → Mason → Builder → Saboteur
       state.concreteSpec = await runArchaeologist(workingSpec, cwd);
-      state.behaviourContract = structuredClone(state.concreteSpec.behaviourContract);
+      state.behaviourContract = structuredClone(
+        state.concreteSpec.behaviourContract,
+      );
       await runTestBuildVerify(state, log);
       continue;
     }
 
     if (convergence.action === "retry-mason") {
-      log("convergence", `Re-running from Mason (iteration ${state.convergenceIteration}/${MAX_CONVERGENCE_ITERATIONS})`);
+      log(
+        "convergence",
+        `Re-running from Mason (iteration ${state.convergenceIteration}/${MAX_CONVERGENCE_ITERATIONS})`,
+      );
       if (convergence.routing) {
-        const bc = requireDefined(state.behaviourContract, "behaviourContract", "retry-mason");
+        const bc = requireDefined(
+          state.behaviourContract,
+          "behaviourContract",
+          "retry-mason",
+        );
         bc.invariants.push(
-          ...convergence.routing.masonTargets.map((t) => `[STRENGTHEN] Test gap: ${t}`)
+          ...convergence.routing.masonTargets.map(
+            (t) => `[STRENGTHEN] Test gap: ${t}`,
+          ),
         );
       }
       // Re-run Mason → Builder → Saboteur (reads current state.concreteSpec, no stale closure)
@@ -273,10 +316,22 @@ export async function generate(
 
   return {
     spec: workingSpec,
-    concreteSpec: requireDefined(state.concreteSpec, "concreteSpec", "generate"),
+    concreteSpec: requireDefined(
+      state.concreteSpec,
+      "concreteSpec",
+      "generate",
+    ),
     tests: requireDefined(state.tests, "tests", "generate"),
-    implementation: requireDefined(state.implementation, "implementation", "generate"),
-    saboteurReport: requireDefined(state.saboteurReport, "saboteurReport", "generate"),
+    implementation: requireDefined(
+      state.implementation,
+      "implementation",
+      "generate",
+    ),
+    saboteurReport: requireDefined(
+      state.saboteurReport,
+      "saboteurReport",
+      "generate",
+    ),
     converged,
     convergenceIterations: state.convergenceIteration,
     killRateHistory: state.killRateHistory,
@@ -285,30 +340,60 @@ export async function generate(
 
 // -- Mason → Builder → Saboteur helper (shared by generate and convergence) --
 
-async function runTestBuildVerify(state: PipelineState, log: LogFn): Promise<void> {
+async function runTestBuildVerify(
+  state: PipelineState,
+  log: LogFn,
+): Promise<void> {
   const ts = currentTimestamp();
-  const behaviourContract = requireDefined(state.behaviourContract, "behaviourContract", "runTestBuildVerify");
+  const behaviourContract = requireDefined(
+    state.behaviourContract,
+    "behaviourContract",
+    "runTestBuildVerify",
+  );
   // Always read concreteSpec from state — never from a closure capture
-  const concreteSpec = requireDefined(state.concreteSpec, "concreteSpec", "runTestBuildVerify");
+  const concreteSpec = requireDefined(
+    state.concreteSpec,
+    "concreteSpec",
+    "runTestBuildVerify",
+  );
 
   // Mason → tests (Chinese Wall)
   log("generate", "Mason generating tests from behaviour contract...");
   state.tests = await runMason(behaviourContract);
   await writeTestFiles(state.cwd, state.tests, ts);
-  log("generate", `Generated ${state.tests.testFilePaths.length} test file(s).`);
+  log(
+    "generate",
+    `Generated ${state.tests.testFilePaths.length} test file(s).`,
+  );
 
   // Builder → implementation
   log("generate", "Builder implementing from spec + tests...");
-  state.implementation = await runBuilder(concreteSpec.refinedSpec, concreteSpec, state.tests, state.cwd);
+  state.implementation = await runBuilder(
+    concreteSpec.refinedSpec,
+    concreteSpec,
+    state.tests,
+    state.cwd,
+  );
   await writeImplementationFiles(state.cwd, state.implementation, ts);
-  log("generate", `Wrote ${state.implementation.files.length} file(s): ${state.implementation.summary}`);
+  log(
+    "generate",
+    `Wrote ${state.implementation.files.length} file(s): ${state.implementation.summary}`,
+  );
 
   // Saboteur → mutation testing
   log("generate", "Saboteur running mutation testing...");
-  const rawReport = await runSaboteur(concreteSpec.refinedSpec, state.tests, state.implementation, state.cwd);
+  const rawReport = await runSaboteur(
+    concreteSpec.refinedSpec,
+    state.tests,
+    state.implementation,
+    state.cwd,
+  );
   state.saboteurReport = validateSaboteurReport(rawReport);
   state.killRateHistory.push(state.saboteurReport.killRate);
-  log("generate", `Kill rate: ${(state.saboteurReport.killRate * 100).toFixed(1)}%`);
+  log(
+    "generate",
+    `Kill rate: ${(state.saboteurReport.killRate * 100).toFixed(1)}%`,
+  );
 
   await savePipelineState(state.cwd, state);
 }
@@ -326,7 +411,7 @@ export async function cover(
     spec?: Spec;
     log?: LogFn;
     maxIterations?: number;
-  } = {}
+  } = {},
 ): Promise<CoverResult> {
   const log = options.log ?? defaultLog;
   const maxIterations = options.maxIterations ?? MAX_CONVERGENCE_ITERATIONS;
@@ -334,19 +419,38 @@ export async function cover(
 
   // Load existing state
   const existing = await loadPipelineState(cwd);
-  const spec = options.spec ?? requireDefined(existing.spec, "spec", "cover (load from store or pass explicitly)");
-  const concreteSpec = requireDefined(existing.concreteSpec, "concreteSpec", "cover");
+  const spec =
+    options.spec ??
+    requireDefined(
+      existing.spec,
+      "spec",
+      "cover (load from store or pass explicitly)",
+    );
+  const concreteSpec = requireDefined(
+    existing.concreteSpec,
+    "concreteSpec",
+    "cover",
+  );
   let tests = requireDefined(existing.tests, "tests", "cover");
-  const implementation = requireDefined(existing.implementation, "implementation", "cover");
+  const implementation = requireDefined(
+    existing.implementation,
+    "implementation",
+    "cover",
+  );
 
   // Clone behaviour contract to avoid mutating loaded state
   let behaviourContract = structuredClone(
-    requireDefined(existing.behaviourContract, "behaviourContract", "cover")
+    requireDefined(existing.behaviourContract, "behaviourContract", "cover"),
   );
 
   // Initial Saboteur run
   log("cover", "Running Saboteur to find test coverage gaps...");
-  let rawReport = await runSaboteur(concreteSpec.refinedSpec, tests, implementation, cwd);
+  let rawReport = await runSaboteur(
+    concreteSpec.refinedSpec,
+    tests,
+    implementation,
+    cwd,
+  );
   let report = validateSaboteurReport(rawReport);
   const originalKillRate = report.killRate;
   const killRateHistory = [report.killRate];
@@ -354,7 +458,10 @@ export async function cover(
 
   let iterations = 0;
 
-  while (report.killRate < COVER_KILL_RATE_THRESHOLD && iterations < maxIterations) {
+  while (
+    report.killRate < COVER_KILL_RATE_THRESHOLD &&
+    iterations < maxIterations
+  ) {
     const survivors = report.mutationResults
       .filter((m): m is Extract<MutationResult, { killed: false }> => !m.killed)
       .map((m) => ({ mutation: m.mutation, classification: m.classification }));
@@ -362,16 +469,22 @@ export async function cover(
     const routing = routeSurvivors(survivors);
 
     if (routing.masonTargets.length === 0) {
-      log("cover", "No weak_test survivors — cannot improve further via test strengthening alone.");
+      log(
+        "cover",
+        "No weak_test survivors — cannot improve further via test strengthening alone.",
+      );
       break;
     }
 
     iterations++;
-    log("cover", `Iteration ${iterations}: strengthening ${routing.masonTargets.length} weak tests.`);
+    log(
+      "cover",
+      `Iteration ${iterations}: strengthening ${routing.masonTargets.length} weak tests.`,
+    );
 
     // Enrich behaviour contract with feedback
     behaviourContract.invariants.push(
-      ...routing.masonTargets.map((t) => `[STRENGTHEN] Test gap: ${t}`)
+      ...routing.masonTargets.map((t) => `[STRENGTHEN] Test gap: ${t}`),
     );
 
     // Re-run Mason
@@ -412,19 +525,24 @@ export async function weed(
   options: {
     spec?: Spec;
     log?: LogFn;
-  } = {}
+  } = {},
 ): Promise<DriftReport> {
   const log = options.log ?? defaultLog;
   await ensureStore(cwd);
 
-  const spec = options.spec ?? await loadSpec(cwd);
+  const spec = options.spec ?? (await loadSpec(cwd));
   if (!spec) {
-    throw new Error("weed requires a spec. Run distill or elicit first, or pass spec explicitly.");
+    throw new Error(
+      "weed requires a spec. Run distill or elicit first, or pass spec explicitly.",
+    );
   }
 
   log("weed", "Detecting intent drift between spec and code...");
   const report = await runWeeder(spec, cwd);
-  log("weed", `Found ${report.findings.length} drift finding(s). Assessment: ${report.overallAssessment}`);
+  log(
+    "weed",
+    `Found ${report.findings.length} drift finding(s). Assessment: ${report.overallAssessment}`,
+  );
 
   return report;
 }
@@ -441,7 +559,7 @@ export async function takeover(
     intent?: string;
     log?: LogFn;
     onDiscovery?: DiscoveryHandler;
-  } = {}
+  } = {},
 ): Promise<GenerateResult> {
   const log = options.log ?? defaultLog;
 
@@ -469,7 +587,7 @@ export async function change(
   options: {
     log?: LogFn;
     onDiscovery?: DiscoveryHandler;
-  } = {}
+  } = {},
 ): Promise<GenerateResult> {
   const log = options.log ?? defaultLog;
   await ensureStore(cwd);
@@ -477,11 +595,17 @@ export async function change(
   const existingSpec = await loadSpec(cwd);
 
   if (!existingSpec) {
-    log("change", "WARNING: No existing spec found. Creating a new spec instead of amending. Run 'distill' first to infer a spec from existing code.");
+    log(
+      "change",
+      "WARNING: No existing spec found. Creating a new spec instead of amending. Run 'distill' first to infer a spec from existing code.",
+    );
   }
 
   log("change", `Amending spec with intent: "${intent}"`);
-  const spec = await elicit(intent, cwd, { existingSpec: existingSpec ?? undefined, log });
+  const spec = await elicit(intent, cwd, {
+    existingSpec: existingSpec ?? undefined,
+    log,
+  });
 
   log("change", "Generating from amended spec...");
   return generate(spec, cwd, { log, onDiscovery: options.onDiscovery });
@@ -498,14 +622,16 @@ export async function sync(
   options: {
     log?: LogFn;
     onDiscovery?: DiscoveryHandler;
-  } = {}
+  } = {},
 ): Promise<GenerateResult> {
   const log = options.log ?? defaultLog;
   await ensureStore(cwd);
 
   const spec = await loadSpec(cwd);
   if (!spec) {
-    throw new Error("sync requires an existing spec. Run distill, elicit, or takeover first.");
+    throw new Error(
+      "sync requires an existing spec. Run distill, elicit, or takeover first.",
+    );
   }
 
   log("sync", "Regenerating from existing spec...");
