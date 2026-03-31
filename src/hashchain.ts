@@ -1,21 +1,21 @@
 import { createHash } from "node:crypto";
+import type { TruncatedHash } from "./types.js";
 
 // -- Hash computation --------------------------------------------------------
 
 /** SHA-256, truncated to 12 hex characters (48 bits). Matches unslop's format. */
-export function truncatedHash(content: string): string {
-  return createHash("sha256").update(content, "utf-8").digest("hex").slice(0, 12);
+export function truncatedHash(content: string): TruncatedHash {
+  return createHash("sha256").update(content, "utf-8").digest("hex").slice(0, 12) as TruncatedHash;
 }
 
 // -- Managed file header format ----------------------------------------------
 
 export interface ManagedHeader {
-  specHash: string;
-  outputHash: string;
+  specHash: TruncatedHash;
+  outputHash: TruncatedHash;
   generated: string; // ISO 8601
 }
 
-const HEADER_PREFIX = "# @prunejuice-managed";
 const HASH_LINE_RE =
   /^# spec-hash:([0-9a-f]{12}) output-hash:([0-9a-f]{12}) generated:(.+)$/;
 
@@ -39,8 +39,8 @@ export function parseHeader(fileContent: string): ManagedHeader | null {
     const match = line.replace(/^\/\//, "#").match(HASH_LINE_RE);
     if (match) {
       return {
-        specHash: match[1]!,
-        outputHash: match[2]!,
+        specHash: match[1]! as TruncatedHash,
+        outputHash: match[2]! as TruncatedHash,
         generated: match[3]!,
       };
     }
@@ -81,13 +81,13 @@ export type FreshnessState =
 
 export interface FreshnessInput {
   /** Current hash of the spec artifact */
-  currentSpecHash: string | null;
+  currentSpecHash: TruncatedHash | null;
   /** The spec-hash recorded in the managed file header */
-  headerSpecHash: string | null;
+  headerSpecHash: TruncatedHash | null;
   /** Current hash of the code body (recomputed from the file) */
-  currentOutputHash: string | null;
+  currentOutputHash: TruncatedHash | null;
   /** The output-hash recorded in the managed file header */
-  headerOutputHash: string | null;
+  headerOutputHash: TruncatedHash | null;
   /** Whether the managed file exists on disk */
   codeFileExists: boolean;
   /** Whether any upstream dependency spec has changed */
@@ -131,32 +131,31 @@ export function classifyFreshness(input: FreshnessInput): FreshnessState {
   return "conflict";
 }
 
-// -- Freshness action mapping ------------------------------------------------
+// -- Freshness action mapping (discriminated union) --------------------------
 
-export interface FreshnessAction {
-  shouldRegenerate: boolean;
-  shouldInvestigate: boolean;
-  requiresCoordinator: boolean;
-  description: string;
-}
+export type FreshnessAction =
+  | { kind: "skip"; description: string }
+  | { kind: "regenerate"; description: string }
+  | { kind: "coordinate"; description: string }
+  | { kind: "error"; description: string };
 
 export function actionForState(state: FreshnessState): FreshnessAction {
   switch (state) {
     case "fresh":
-      return { shouldRegenerate: false, shouldInvestigate: false, requiresCoordinator: false, description: "Up to date" };
+      return { kind: "skip", description: "Up to date" };
     case "stale":
-      return { shouldRegenerate: true, shouldInvestigate: false, requiresCoordinator: false, description: "Spec changed, regenerating" };
+      return { kind: "regenerate", description: "Spec changed, regenerating" };
     case "pending":
-      return { shouldRegenerate: true, shouldInvestigate: false, requiresCoordinator: false, description: "No code yet, generating" };
+      return { kind: "regenerate", description: "No code yet, generating" };
     case "structural":
-      return { shouldRegenerate: false, shouldInvestigate: false, requiresCoordinator: false, description: "Code disappeared — lifecycle issue" };
+      return { kind: "error", description: "Code disappeared — lifecycle issue" };
     case "test-drifted":
-      return { shouldRegenerate: true, shouldInvestigate: false, requiresCoordinator: false, description: "Spec changed since tests, regenerating tests" };
+      return { kind: "regenerate", description: "Spec changed since tests, regenerating tests" };
     case "modified":
-      return { shouldRegenerate: false, shouldInvestigate: true, requiresCoordinator: true, description: "Code was manually edited — coordinator decides" };
+      return { kind: "coordinate", description: "Code was manually edited — coordinator decides" };
     case "conflict":
-      return { shouldRegenerate: false, shouldInvestigate: true, requiresCoordinator: true, description: "Both spec and code changed — coordinator decides" };
+      return { kind: "coordinate", description: "Both spec and code changed — coordinator decides" };
     case "ghost-stale":
-      return { shouldRegenerate: false, shouldInvestigate: true, requiresCoordinator: true, description: "Upstream dependency changed — coordinator decides cascade scope" };
+      return { kind: "coordinate", description: "Upstream dependency changed — coordinator decides cascade scope" };
   }
 }

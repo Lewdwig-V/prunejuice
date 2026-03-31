@@ -7,7 +7,10 @@ import type {
   CoordinatorDecision,
   SurvivorClassification,
   SurvivorRouting,
+  SaboteurReport,
+  MutationResult,
 } from "./types.js";
+import { classifyFreshness, actionForState, type FreshnessInput } from "./hashchain.js";
 
 // -- Agent execution helper --------------------------------------------------
 
@@ -48,9 +51,18 @@ export async function queryAgent(params: AgentQuery): Promise<unknown> {
         const errors = "errors" in message ? (message as { errors: string[] }).errors : [];
         throw new Error(`Agent failed (${message.subtype}): ${errors.join(", ")}`);
       }
-      // When outputFormat is set, structured_output contains the parsed result
       const success = message as { result: string; structured_output?: unknown };
-      result = success.structured_output ?? JSON.parse(success.result);
+      if (success.structured_output !== undefined) {
+        result = success.structured_output;
+      } else {
+        try {
+          result = JSON.parse(success.result);
+        } catch {
+          throw new Error(
+            `Agent returned non-JSON output. Raw result (first 500 chars): ${success.result.slice(0, 500)}`
+          );
+        }
+      }
     }
   }
 
@@ -60,7 +72,37 @@ export async function queryAgent(params: AgentQuery): Promise<unknown> {
   return result;
 }
 
-// -- Survivor routing (pure function, user-contributed) ----------------------
+// -- Kill rate recomputation (never trust LLM-computed metrics) --------------
+
+export function recomputeKillRate(mutationResults: MutationResult[]): number {
+  const killed = mutationResults.filter((m) => m.killed).length;
+  const equivalent = mutationResults.filter((m) => !m.killed && m.classification === "equivalent").length;
+  const nonEquivalent = mutationResults.length - equivalent;
+  if (nonEquivalent === 0) return 1; // no non-equivalent mutations → vacuously passing
+  return killed / nonEquivalent;
+}
+
+export function validateSaboteurReport(raw: SaboteurReport): SaboteurReport {
+  // Validate: every survivor must have a classification
+  for (const m of raw.mutationResults) {
+    if (!m.killed && !("classification" in m && m.classification)) {
+      throw new Error(
+        `Saboteur returned survivor without classification: "${m.mutation}". ` +
+        `Every non-killed mutation must be classified as weak_test, spec_gap, or equivalent.`
+      );
+    }
+  }
+  // Recompute kill rate — never trust the LLM's arithmetic
+  const recomputed = recomputeKillRate(raw.mutationResults);
+  if (Math.abs(recomputed - raw.killRate) > 0.01) {
+    process.stderr.write(
+      `[pipeline] WARNING: Saboteur reported killRate ${raw.killRate.toFixed(3)} but recomputed ${recomputed.toFixed(3)} — using recomputed value\n`
+    );
+  }
+  return { ...raw, killRate: recomputed };
+}
+
+// -- Survivor routing (pure function, exhaustive switch) --------------------
 
 export function routeSurvivors(
   survivors: Array<{ mutation: string; classification: SurvivorClassification }>
@@ -70,9 +112,20 @@ export function routeSurvivors(
   const skipped: string[] = [];
 
   for (const { mutation, classification } of survivors) {
-    if (classification === "weak_test") masonTargets.push(mutation);
-    else if (classification === "spec_gap") architectTargets.push(mutation);
-    else skipped.push(mutation);
+    switch (classification) {
+      case "weak_test": masonTargets.push(mutation); break;
+      case "spec_gap": architectTargets.push(mutation); break;
+      case "equivalent": skipped.push(mutation); break;
+      default: {
+        const _exhaustive: never = classification;
+        throw new Error(`Unknown survivor classification: ${_exhaustive}`);
+      }
+    }
+  }
+
+  const totalRouted = masonTargets.length + architectTargets.length + skipped.length;
+  if (totalRouted !== survivors.length) {
+    throw new Error(`Routing partition invariant violated: routed ${totalRouted} but received ${survivors.length}`);
   }
 
   return { masonTargets, architectTargets, skipped };
@@ -80,8 +133,8 @@ export function routeSurvivors(
 
 // -- Convergence loop --------------------------------------------------------
 
+export const MAX_CONVERGENCE_ITERATIONS = 3;
 const KILL_RATE_THRESHOLD = 0.8;
-const MAX_CONVERGENCE_ITERATIONS = 3;
 const ENTROPY_IMPROVEMENT_THRESHOLD = 0.05;
 
 export interface ConvergenceResult {
@@ -102,58 +155,61 @@ export function evaluateConvergence(state: PipelineState): ConvergenceResult {
     return { converged: true, action: "proceed", reason: `Kill rate ${(report.killRate * 100).toFixed(1)}% >= ${KILL_RATE_THRESHOLD * 100}%` };
   }
 
-  // Max iterations exceeded
-  if (state.convergenceIteration >= MAX_CONVERGENCE_ITERATIONS) {
-    // One last shot: radical spec hardening (Section 6 of the paper)
-    if (state.convergenceIteration === MAX_CONVERGENCE_ITERATIONS) {
-      return {
-        converged: false,
-        action: "radical-harden",
-        reason: `${MAX_CONVERGENCE_ITERATIONS} iterations exhausted, attempting radical spec hardening`,
-      };
-    }
+  // Radical hardening already attempted — abort
+  if (state.radicalHardeningAttempted) {
     return {
       converged: false,
       action: "abort",
-      reason: `Radical hardening did not achieve convergence. Final kill rate: ${(report.killRate * 100).toFixed(1)}%`,
+      reason: `Radical hardening already attempted. Final kill rate: ${(report.killRate * 100).toFixed(1)}%`,
     };
   }
 
-  // Entropy stall detection: if kill rate improved by less than 5%, the loop is stalling
+  // Max iterations exceeded — one last shot via radical hardening
+  if (state.convergenceIteration >= MAX_CONVERGENCE_ITERATIONS) {
+    return {
+      converged: false,
+      action: "radical-harden",
+      reason: `${MAX_CONVERGENCE_ITERATIONS} iterations exhausted, attempting radical spec hardening`,
+    };
+  }
+
+  // Kill rate regression detection: if rate got worse, abort immediately
   if (state.killRateHistory.length >= 2) {
     const prev = state.killRateHistory[state.killRateHistory.length - 2]!;
     const curr = state.killRateHistory[state.killRateHistory.length - 1]!;
-    if (curr - prev < ENTROPY_IMPROVEMENT_THRESHOLD) {
+    const delta = curr - prev;
+
+    if (delta < 0) {
+      return {
+        converged: false,
+        action: "abort",
+        reason: `Kill rate regressed from ${(prev * 100).toFixed(1)}% to ${(curr * 100).toFixed(1)}% — convergence loop is diverging`,
+      };
+    }
+
+    // Entropy stall: less than 5% improvement
+    if (delta < ENTROPY_IMPROVEMENT_THRESHOLD) {
       return {
         converged: false,
         action: "radical-harden",
-        reason: `Entropy stall: kill rate improved only ${((curr - prev) * 100).toFixed(1)}% (< ${ENTROPY_IMPROVEMENT_THRESHOLD * 100}% threshold)`,
+        reason: `Entropy stall: kill rate improved only ${(delta * 100).toFixed(1)}% (< ${ENTROPY_IMPROVEMENT_THRESHOLD * 100}% threshold)`,
       };
     }
   }
 
   // Route survivors to responsible agents
   const survivors = report.mutationResults
-    .filter((m) => !m.killed && m.classification)
-    .map((m) => ({ mutation: m.mutation, classification: m.classification! }));
+    .filter((m): m is Extract<MutationResult, { killed: false }> => !m.killed)
+    .map((m) => ({ mutation: m.mutation, classification: m.classification }));
 
   const routing = routeSurvivors(survivors);
 
   // Decide which agent to retry based on routing
-  if (routing.architectTargets.length > 0 && routing.masonTargets.length > 0) {
-    // Both need work — start from Architect (spec gaps first, then Mason gets updated contract)
-    return {
-      converged: false,
-      action: "retry-architect",
-      reason: `${routing.architectTargets.length} spec gaps + ${routing.masonTargets.length} weak tests`,
-      routing,
-    };
-  }
   if (routing.architectTargets.length > 0) {
     return {
       converged: false,
       action: "retry-architect",
-      reason: `${routing.architectTargets.length} spec gaps to resolve`,
+      reason: `${routing.architectTargets.length} spec gaps${routing.masonTargets.length > 0 ? ` + ${routing.masonTargets.length} weak tests` : ""}`,
       routing,
     };
   }
@@ -166,7 +222,7 @@ export function evaluateConvergence(state: PipelineState): ConvergenceResult {
     };
   }
 
-  // All survivors are equivalent but kill rate still below threshold — something is off
+  // All survivors are equivalent but kill rate still below threshold
   return {
     converged: false,
     action: "abort",
@@ -220,6 +276,30 @@ export async function coordinatorDecision(
   return result as CoordinatorDecision;
 }
 
+// -- Freshness check (wires classifier into pipeline decisions) ---------------
+
+export async function checkFreshness(input: FreshnessInput, state: PipelineState): Promise<"skip" | "regenerate" | "abort"> {
+  const freshnessState = classifyFreshness(input);
+  const action = actionForState(freshnessState);
+
+  switch (action.kind) {
+    case "skip":
+      return "skip";
+    case "regenerate":
+      return "regenerate";
+    case "error":
+      throw new Error(`Freshness error: ${action.description}`);
+    case "coordinate": {
+      const decision = await coordinatorDecision(state, `Freshness state: ${freshnessState}. ${action.description}`);
+      if (decision.action === "abort") {
+        return "abort";
+      }
+      // Coordinator says proceed or retry — either way, regenerate
+      return "regenerate";
+    }
+  }
+}
+
 // -- Pipeline stages (ordered) -----------------------------------------------
 
 export const STAGE_ORDER: PipelineStage[] = [
@@ -234,4 +314,17 @@ export const STAGE_ORDER: PipelineStage[] = [
 export function nextStage(current: PipelineStage): PipelineStage | null {
   const idx = STAGE_ORDER.indexOf(current);
   return idx < STAGE_ORDER.length - 1 ? STAGE_ORDER[idx + 1]! : null;
+}
+
+// -- Stage-running helper (shared by forward pass and convergence retries) ---
+
+export async function runStagesFrom(
+  start: PipelineStage,
+  state: PipelineState,
+  runStage: (stage: PipelineStage, state: PipelineState) => Promise<void>
+): Promise<void> {
+  const startIdx = STAGE_ORDER.indexOf(start);
+  for (const stage of STAGE_ORDER.slice(startIdx)) {
+    await runStage(stage, state);
+  }
 }
