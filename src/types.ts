@@ -3,6 +3,16 @@
  * Each agent sees only the artifacts listed in its StageInput type.
  */
 
+// -- Branded types for hash strings ------------------------------------------
+
+declare const __brand: unique symbol;
+type Brand<T, B extends string> = T & { readonly [__brand]: B };
+
+/** SHA-256 truncated to 12 hex characters. Prevents accidental string interchange. */
+export type TruncatedHash = Brand<string, "TruncatedHash">;
+
+// -- Core artifacts ----------------------------------------------------------
+
 export interface Spec {
   intent: string;
   requirements: string[];
@@ -17,6 +27,7 @@ export interface ConcreteSpec {
   strategyProjection: string;
   refinedSpec: Spec;
   behaviourContract: BehaviourContract;
+  discovered: DiscoveredItem[]; // correctness requirements the spec doesn't cover
 }
 
 export interface BehaviourContract {
@@ -45,29 +56,54 @@ export interface Implementation {
   summary: string;
 }
 
+// -- Mutation results (discriminated union) -----------------------------------
+
+export type SurvivorClassification = "weak_test" | "spec_gap" | "equivalent";
+
+export type MutationResult =
+  | { mutation: string; killed: true; details: string }
+  | { mutation: string; killed: false; details: string; classification: SurvivorClassification };
+
 export interface SaboteurReport {
-  mutationResults: Array<{
-    mutation: string;
-    killed: boolean;
-    details: string;
-  }>;
+  mutationResults: MutationResult[];
   complianceViolations: string[];
   verdict: "pass" | "fail";
   recommendations: string[];
+  killRate: number; // 0-1, adjusted (excluding equivalent) — recomputed by pipeline, not trusted from LLM
 }
 
-// What each agent receives — enforces information boundaries at the type level
+// -- Discovery gate ----------------------------------------------------------
+
+export type DiscoveryResolution = "promoted" | "dismissed" | "deferred";
+
+export interface DiscoveredItem {
+  title: string;
+  observation: string;
+  question: string;
+  resolution?: DiscoveryResolution; // populated after discovery gate
+}
+
+// -- Convergence loop routing ------------------------------------------------
+
+export interface SurvivorRouting {
+  masonTargets: string[];     // weak_test → Mason strengthens assertions
+  architectTargets: string[]; // spec_gap → Architect enriches behaviour contract
+  skipped: string[];          // equivalent → no action
+}
+
+// -- Information boundary types (what each agent receives) -------------------
+
 export interface ArchitectInput {
   userIntent: string;
 }
 
 export interface ArchaeologistInput {
   spec: Spec;
-  cwd: string; // gets Read/Grep access to code
+  cwd: string;
 }
 
 export interface MasonInput {
-  behaviourContract: BehaviourContract; // only this, no code access
+  behaviourContract: BehaviourContract;
 }
 
 export interface BuilderInput {
@@ -84,7 +120,8 @@ export interface SaboteurInput {
   cwd: string;
 }
 
-// Pipeline state accumulator
+// -- Pipeline state accumulator ----------------------------------------------
+
 export interface PipelineState {
   userIntent: string;
   cwd: string;
@@ -94,11 +131,16 @@ export interface PipelineState {
   tests?: GeneratedTests;
   implementation?: Implementation;
   saboteurReport?: SaboteurReport;
+  // Convergence loop tracking
+  convergenceIteration: number;
+  killRateHistory: number[];
+  radicalHardeningAttempted: boolean;
 }
 
 export type PipelineStage =
   | "architect"
   | "archaeologist"
+  | "discovery-gate"
   | "mason"
   | "builder"
   | "saboteur";
