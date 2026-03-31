@@ -150,7 +150,7 @@ export async function artifactHash(cwd: string, name: string): Promise<Truncated
 
 // -- Comment style detection -------------------------------------------------
 
-function commentStyleForPath(path: string): "#" | "//" {
+export function commentStyleForPath(path: string): "#" | "//" {
   const hashCommentExtensions = [".py", ".sh", ".rb", ".yaml", ".yml", ".toml", ".pl", ".r", ".jl"];
   const ext = path.slice(path.lastIndexOf(".")).toLowerCase();
   return hashCommentExtensions.includes(ext) ? "#" : "//";
