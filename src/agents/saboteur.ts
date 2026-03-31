@@ -1,4 +1,9 @@
-import type { Spec, GeneratedTests, Implementation, SaboteurReport } from "../types.js";
+import type {
+  Spec,
+  GeneratedTests,
+  Implementation,
+  SaboteurReport,
+} from "../types.js";
 import { queryAgent } from "../pipeline.js";
 
 const SYSTEM_PROMPT = `You are the Saboteur — a mutation testing and constitutional compliance specialist.
@@ -54,7 +59,7 @@ export async function runSaboteur(
   spec: Spec,
   tests: GeneratedTests,
   implementation: Implementation,
-  cwd: string
+  cwd: string,
 ): Promise<SaboteurReport> {
   const result = await queryAgent({
     systemPrompt: SYSTEM_PROMPT,
@@ -94,7 +99,13 @@ ${implementation.files.map((f) => `### ${f.path}\n\`\`\`\n${f.content}\n\`\`\``)
         recommendations: { type: "array", items: { type: "string" } },
         killRate: { type: "number", minimum: 0, maximum: 1 },
       },
-      required: ["mutationResults", "complianceViolations", "verdict", "recommendations", "killRate"],
+      required: [
+        "mutationResults",
+        "complianceViolations",
+        "verdict",
+        "recommendations",
+        "killRate",
+      ],
     },
   });
 

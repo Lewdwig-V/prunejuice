@@ -5,7 +5,10 @@ import type { TruncatedHash } from "./types.js";
 
 /** SHA-256, truncated to 12 hex characters (48 bits). Matches unslop's format. */
 export function truncatedHash(content: string): TruncatedHash {
-  return createHash("sha256").update(content, "utf-8").digest("hex").slice(0, 12) as TruncatedHash;
+  return createHash("sha256")
+    .update(content, "utf-8")
+    .digest("hex")
+    .slice(0, 12) as TruncatedHash;
 }
 
 // -- Managed file header format ----------------------------------------------
@@ -23,7 +26,7 @@ const HASH_LINE_RE =
 export function formatHeader(
   specPath: string,
   header: ManagedHeader,
-  commentStyle: "#" | "//" = "#"
+  commentStyle: "#" | "//" = "#",
 ): string {
   const c = commentStyle;
   return [
@@ -148,14 +151,30 @@ export function actionForState(state: FreshnessState): FreshnessAction {
     case "pending":
       return { kind: "regenerate", description: "No code yet, generating" };
     case "structural":
-      return { kind: "error", description: "Code disappeared — lifecycle issue" };
+      return {
+        kind: "error",
+        description: "Code disappeared — lifecycle issue",
+      };
     case "test-drifted":
-      return { kind: "regenerate", description: "Spec changed since tests, regenerating tests" };
+      return {
+        kind: "regenerate",
+        description: "Spec changed since tests, regenerating tests",
+      };
     case "modified":
-      return { kind: "coordinate", description: "Code was manually edited — coordinator decides" };
+      return {
+        kind: "coordinate",
+        description: "Code was manually edited — coordinator decides",
+      };
     case "conflict":
-      return { kind: "coordinate", description: "Both spec and code changed — coordinator decides" };
+      return {
+        kind: "coordinate",
+        description: "Both spec and code changed — coordinator decides",
+      };
     case "ghost-stale":
-      return { kind: "coordinate", description: "Upstream dependency changed — coordinator decides cascade scope" };
+      return {
+        kind: "coordinate",
+        description:
+          "Upstream dependency changed — coordinator decides cascade scope",
+      };
   }
 }

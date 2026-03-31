@@ -24,7 +24,10 @@ Do NOT include implementation details — that is the Builder's job.`;
 
 const TOOLS = ["Read", "Grep", "Glob", "LS"] as const;
 
-export async function runArchitect(userIntent: string, cwd: string): Promise<Spec> {
+export async function runArchitect(
+  userIntent: string,
+  cwd: string,
+): Promise<Spec> {
   const result = await queryAgent({
     systemPrompt: SYSTEM_PROMPT,
     prompt: `Elicit a specification from the following user intent:\n\n${userIntent}`,

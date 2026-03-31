@@ -27,7 +27,9 @@ Write tests that are:
 // Mason gets NO filesystem tools — complete information isolation
 const TOOLS: string[] = [];
 
-export async function runMason(behaviourContract: BehaviourContract): Promise<GeneratedTests> {
+export async function runMason(
+  behaviourContract: BehaviourContract,
+): Promise<GeneratedTests> {
   const result = await queryAgent({
     systemPrompt: SYSTEM_PROMPT,
     prompt: `Generate tests from this behavioural contract:\n\n${JSON.stringify(behaviourContract, null, 2)}`,

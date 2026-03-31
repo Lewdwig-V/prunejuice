@@ -41,7 +41,10 @@ The "discovered" array should be empty if all correctness requirements are cover
 
 const TOOLS = ["Read", "Grep", "Glob", "LS", "Bash"] as const;
 
-export async function runArchaeologist(spec: Spec, cwd: string): Promise<ConcreteSpec> {
+export async function runArchaeologist(
+  spec: Spec,
+  cwd: string,
+): Promise<ConcreteSpec> {
   const result = await queryAgent({
     systemPrompt: SYSTEM_PROMPT,
     prompt: `Given this specification, analyze the codebase and produce a concrete implementation strategy.\n\nSpecification:\n${JSON.stringify(spec, null, 2)}`,
@@ -62,7 +65,12 @@ export async function runArchaeologist(spec: Spec, cwd: string): Promise<Concret
             constraints: { type: "array", items: { type: "string" } },
             acceptanceCriteria: { type: "array", items: { type: "string" } },
           },
-          required: ["intent", "requirements", "constraints", "acceptanceCriteria"],
+          required: [
+            "intent",
+            "requirements",
+            "constraints",
+            "acceptanceCriteria",
+          ],
         },
         behaviourContract: {
           type: "object",
@@ -84,7 +92,13 @@ export async function runArchaeologist(spec: Spec, cwd: string): Promise<Concret
               },
             },
           },
-          required: ["name", "preconditions", "postconditions", "invariants", "scenarios"],
+          required: [
+            "name",
+            "preconditions",
+            "postconditions",
+            "invariants",
+            "scenarios",
+          ],
         },
         discovered: {
           type: "array",
@@ -99,7 +113,15 @@ export async function runArchaeologist(spec: Spec, cwd: string): Promise<Concret
           },
         },
       },
-      required: ["existingPatterns", "integrationPoints", "fileTargets", "strategyProjection", "refinedSpec", "behaviourContract", "discovered"],
+      required: [
+        "existingPatterns",
+        "integrationPoints",
+        "fileTargets",
+        "strategyProjection",
+        "refinedSpec",
+        "behaviourContract",
+        "discovered",
+      ],
     },
   });
 

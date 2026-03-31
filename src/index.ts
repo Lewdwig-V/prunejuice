@@ -22,7 +22,12 @@ import {
   writeImplementationFiles,
   writeTestFiles,
 } from "./store.js";
-import type { PipelineState, PipelineStage, DiscoveredItem, DiscoveryResolution } from "./types.js";
+import type {
+  PipelineState,
+  PipelineStage,
+  DiscoveredItem,
+  DiscoveryResolution,
+} from "./types.js";
 
 function log(stage: string, msg: string) {
   const timestamp = new Date().toISOString().slice(11, 19);
@@ -36,9 +41,15 @@ function pipelineTimestamp(): string {
 
 // -- Pipeline invariant assertions -------------------------------------------
 
-function requireState<T>(value: T | undefined, name: string, requiredBy: string): T {
+function requireState<T>(
+  value: T | undefined,
+  name: string,
+  requiredBy: string,
+): T {
   if (value === undefined) {
-    throw new Error(`Pipeline invariant violated: ${requiredBy} requires ${name}, but it is undefined. Check stage ordering.`);
+    throw new Error(
+      `Pipeline invariant violated: ${requiredBy} requires ${name}, but it is undefined. Check stage ordering.`,
+    );
   }
   return value;
 }
@@ -48,7 +59,10 @@ function requireState<T>(value: T | undefined, name: string, requiredBy: string)
 async function discoveryGate(discovered: DiscoveredItem[]): Promise<void> {
   if (discovered.length === 0) return;
 
-  log("discovery-gate", `Archaeologist discovered ${discovered.length} item(s) requiring human review:`);
+  log(
+    "discovery-gate",
+    `Archaeologist discovered ${discovered.length} item(s) requiring human review:`,
+  );
   for (const item of discovered) {
     process.stderr.write(`\n  ★ ${item.title}\n`);
     process.stderr.write(`    Observation: ${item.observation}\n`);
@@ -60,15 +74,21 @@ async function discoveryGate(discovered: DiscoveredItem[]): Promise<void> {
 
   for (const item of discovered) {
     const answer = await new Promise<string>((resolve) => {
-      rl.question(`  [${item.title}] Promote to spec, dismiss, or defer? (p/d/f): `, (ans) => {
-        resolve(ans.trim().toLowerCase());
-      });
+      rl.question(
+        `  [${item.title}] Promote to spec, dismiss, or defer? (p/d/f): `,
+        (ans) => {
+          resolve(ans.trim().toLowerCase());
+        },
+      );
     });
 
     const resolutionMap: Record<string, DiscoveryResolution> = {
-      p: "promoted", promote: "promoted",
-      d: "dismissed", dismiss: "dismissed",
-      f: "deferred", defer: "deferred",
+      p: "promoted",
+      promote: "promoted",
+      d: "dismissed",
+      dismiss: "dismissed",
+      f: "deferred",
+      defer: "deferred",
     };
     item.resolution = resolutionMap[answer] ?? "deferred";
     log("discovery-gate", `${item.title}: ${item.resolution}`);
@@ -79,14 +99,20 @@ async function discoveryGate(discovered: DiscoveredItem[]): Promise<void> {
 
 // -- Stage execution ---------------------------------------------------------
 
-async function runStage(stage: PipelineStage, state: PipelineState): Promise<void> {
+async function runStage(
+  stage: PipelineStage,
+  state: PipelineState,
+): Promise<void> {
   const ts = pipelineTimestamp();
 
   switch (stage) {
     case "architect": {
       log("architect", "Eliciting specification from user intent...");
       state.spec = await runArchitect(state.userIntent, state.cwd);
-      log("architect", `Produced spec with ${state.spec.requirements.length} requirements.`);
+      log(
+        "architect",
+        `Produced spec with ${state.spec.requirements.length} requirements.`,
+      );
       break;
     }
     case "archaeologist": {
@@ -94,52 +120,97 @@ async function runStage(stage: PipelineStage, state: PipelineState): Promise<voi
       log("archaeologist", "Analyzing codebase and refining spec...");
       state.concreteSpec = await runArchaeologist(spec, state.cwd);
       state.behaviourContract = state.concreteSpec.behaviourContract;
-      log("archaeologist", `Strategy targets ${state.concreteSpec.fileTargets.length} files. Derived behaviour contract: ${state.behaviourContract.name}`);
+      log(
+        "archaeologist",
+        `Strategy targets ${state.concreteSpec.fileTargets.length} files. Derived behaviour contract: ${state.behaviourContract.name}`,
+      );
       if (state.concreteSpec.discovered.length > 0) {
-        log("archaeologist", `Discovered ${state.concreteSpec.discovered.length} item(s) for human review.`);
+        log(
+          "archaeologist",
+          `Discovered ${state.concreteSpec.discovered.length} item(s) for human review.`,
+        );
       }
       break;
     }
     case "discovery-gate": {
-      const concreteSpec = requireState(state.concreteSpec, "concreteSpec", "Discovery gate");
+      const concreteSpec = requireState(
+        state.concreteSpec,
+        "concreteSpec",
+        "Discovery gate",
+      );
       await discoveryGate(concreteSpec.discovered);
       break;
     }
     case "mason": {
-      const behaviourContract = requireState(state.behaviourContract, "behaviourContract", "Mason");
+      const behaviourContract = requireState(
+        state.behaviourContract,
+        "behaviourContract",
+        "Mason",
+      );
       log("mason", "Generating tests from behavioural contract...");
       state.tests = await runMason(behaviourContract);
-      log("mason", `Generated ${state.tests.testFilePaths.length} test file(s).`);
+      log(
+        "mason",
+        `Generated ${state.tests.testFilePaths.length} test file(s).`,
+      );
       await writeTestFiles(state.cwd, state.tests, ts);
       log("mason", "Wrote managed test files with hash chain headers.");
       break;
     }
     case "builder": {
-      const concreteSpec = requireState(state.concreteSpec, "concreteSpec", "Builder");
+      const concreteSpec = requireState(
+        state.concreteSpec,
+        "concreteSpec",
+        "Builder",
+      );
       const tests = requireState(state.tests, "tests", "Builder");
       log("builder", "Implementing from spec + tests...");
       state.implementation = await runBuilder(
         concreteSpec.refinedSpec,
         concreteSpec,
         tests,
-        state.cwd
+        state.cwd,
       );
-      log("builder", `Wrote ${state.implementation.files.length} file(s): ${state.implementation.summary}`);
+      log(
+        "builder",
+        `Wrote ${state.implementation.files.length} file(s): ${state.implementation.summary}`,
+      );
       await writeImplementationFiles(state.cwd, state.implementation, ts);
-      log("builder", "Wrote managed implementation files with hash chain headers.");
+      log(
+        "builder",
+        "Wrote managed implementation files with hash chain headers.",
+      );
       break;
     }
     case "saboteur": {
-      const concreteSpec = requireState(state.concreteSpec, "concreteSpec", "Saboteur");
+      const concreteSpec = requireState(
+        state.concreteSpec,
+        "concreteSpec",
+        "Saboteur",
+      );
       const tests = requireState(state.tests, "tests", "Saboteur");
-      const implementation = requireState(state.implementation, "implementation", "Saboteur");
+      const implementation = requireState(
+        state.implementation,
+        "implementation",
+        "Saboteur",
+      );
       log("saboteur", "Running mutation testing and compliance checks...");
-      const rawReport = await runSaboteur(concreteSpec.refinedSpec, tests, implementation, state.cwd);
+      const rawReport = await runSaboteur(
+        concreteSpec.refinedSpec,
+        tests,
+        implementation,
+        state.cwd,
+      );
       state.saboteurReport = validateSaboteurReport(rawReport);
       state.killRateHistory.push(state.saboteurReport.killRate);
-      const killed = state.saboteurReport.mutationResults.filter((m) => m.killed).length;
+      const killed = state.saboteurReport.mutationResults.filter(
+        (m) => m.killed,
+      ).length;
       const total = state.saboteurReport.mutationResults.length;
-      log("saboteur", `Verdict: ${state.saboteurReport.verdict} | Kill rate: ${(state.saboteurReport.killRate * 100).toFixed(1)}% (${killed}/${total} mutations killed)`);
+      log(
+        "saboteur",
+        `Verdict: ${state.saboteurReport.verdict} | Kill rate: ${(state.saboteurReport.killRate * 100).toFixed(1)}% (${killed}/${total} mutations killed)`,
+      );
       break;
     }
   }
@@ -154,7 +225,9 @@ async function main() {
   const userIntent = process.argv.slice(2).join(" ");
   if (!userIntent) {
     console.error("Usage: prunejuice <intent>");
-    console.error('  e.g.: prunejuice "Add a rate limiter middleware with sliding window"');
+    console.error(
+      '  e.g.: prunejuice "Add a rate limiter middleware with sliding window"',
+    );
     process.exit(1);
   }
 
@@ -195,7 +268,10 @@ async function main() {
   // -- Convergence loop (Section 6 of the paper)
   while (true) {
     const convergence = evaluateConvergence(state);
-    log("coordinator", `Convergence: ${convergence.action} — ${convergence.reason}`);
+    log(
+      "coordinator",
+      `Convergence: ${convergence.action} — ${convergence.reason}`,
+    );
 
     if (convergence.converged) {
       log("coordinator", "Pipeline converged successfully.");
@@ -204,12 +280,18 @@ async function main() {
 
     if (convergence.action === "abort") {
       log("coordinator", "Pipeline aborted — convergence not achievable.");
-      process.stdout.write(JSON.stringify({
-        status: "aborted",
-        reason: convergence.reason,
-        killRateHistory: state.killRateHistory,
-        saboteurReport: state.saboteurReport,
-      }, null, 2));
+      process.stdout.write(
+        JSON.stringify(
+          {
+            status: "aborted",
+            reason: convergence.reason,
+            killRateHistory: state.killRateHistory,
+            saboteurReport: state.saboteurReport,
+          },
+          null,
+          2,
+        ),
+      );
       process.exit(1);
     }
 
@@ -217,15 +299,21 @@ async function main() {
 
     if (convergence.action === "radical-harden") {
       state.radicalHardeningAttempted = true;
-      log("coordinator", "Radical spec hardening — re-running from Archaeologist with mutation feedback.");
+      log(
+        "coordinator",
+        "Radical spec hardening — re-running from Archaeologist with mutation feedback.",
+      );
       const spec = requireState(state.spec, "spec", "Radical hardening");
       if (state.saboteurReport) {
         const survivorSummary = state.saboteurReport.mutationResults
           .filter((m) => !m.killed)
-          .map((m) => `- ${m.mutation}: ${m.details} (${!m.killed ? m.classification : "killed"})`)
+          .map(
+            (m) =>
+              `- ${m.mutation}: ${m.details} (${!m.killed ? m.classification : "killed"})`,
+          )
           .join("\n");
         spec.constraints.push(
-          `[MUTATION FEEDBACK] The following mutations survived testing and must be addressed:\n${survivorSummary}`
+          `[MUTATION FEEDBACK] The following mutations survived testing and must be addressed:\n${survivorSummary}`,
         );
       }
       await runStagesFrom("archaeologist", state, runStage);
@@ -233,12 +321,19 @@ async function main() {
     }
 
     if (convergence.action === "retry-architect") {
-      log("coordinator", `Re-running from Archaeologist (iteration ${state.convergenceIteration}/${MAX_CONVERGENCE_ITERATIONS})`);
+      log(
+        "coordinator",
+        `Re-running from Archaeologist (iteration ${state.convergenceIteration}/${MAX_CONVERGENCE_ITERATIONS})`,
+      );
       if (convergence.routing) {
-        const spec = requireState(state.spec, "spec", "Convergence retry-architect");
+        const spec = requireState(
+          state.spec,
+          "spec",
+          "Convergence retry-architect",
+        );
         const gaps = convergence.routing.architectTargets.join("\n- ");
         spec.constraints.push(
-          `[SPEC GAP FEEDBACK] The following behaviours are under-constrained:\n- ${gaps}`
+          `[SPEC GAP FEEDBACK] The following behaviours are under-constrained:\n- ${gaps}`,
         );
       }
       await runStagesFrom("archaeologist", state, runStage);
@@ -246,12 +341,19 @@ async function main() {
     }
 
     if (convergence.action === "retry-mason") {
-      log("coordinator", `Re-running from Mason (iteration ${state.convergenceIteration}/${MAX_CONVERGENCE_ITERATIONS})`);
+      log(
+        "coordinator",
+        `Re-running from Mason (iteration ${state.convergenceIteration}/${MAX_CONVERGENCE_ITERATIONS})`,
+      );
       if (convergence.routing) {
-        const behaviourContract = requireState(state.behaviourContract, "behaviourContract", "Convergence retry-mason");
+        const behaviourContract = requireState(
+          state.behaviourContract,
+          "behaviourContract",
+          "Convergence retry-mason",
+        );
         const weakTests = convergence.routing.masonTargets;
         behaviourContract.invariants.push(
-          ...weakTests.map((t) => `[STRENGTHEN] Test gap: ${t}`)
+          ...weakTests.map((t) => `[STRENGTHEN] Test gap: ${t}`),
         );
       }
       await runStagesFrom("mason", state, runStage);
@@ -261,20 +363,35 @@ async function main() {
 
   // -- Pipeline complete
   log("coordinator", "Pipeline complete.");
-  process.stdout.write(JSON.stringify({
-    status: "complete",
-    convergenceIterations: state.convergenceIteration,
-    killRateHistory: state.killRateHistory,
-    spec: state.spec,
-    concreteSpec: state.concreteSpec,
-    tests: { filePaths: state.tests?.testFilePaths, coverageTargets: state.tests?.coverageTargets },
-    implementation: { files: state.implementation?.files.map((f) => f.path), summary: state.implementation?.summary },
-    saboteurReport: state.saboteurReport,
-  }, null, 2));
+  process.stdout.write(
+    JSON.stringify(
+      {
+        status: "complete",
+        convergenceIterations: state.convergenceIteration,
+        killRateHistory: state.killRateHistory,
+        spec: state.spec,
+        concreteSpec: state.concreteSpec,
+        tests: {
+          filePaths: state.tests?.testFilePaths,
+          coverageTargets: state.tests?.coverageTargets,
+        },
+        implementation: {
+          files: state.implementation?.files.map((f) => f.path),
+          summary: state.implementation?.summary,
+        },
+        saboteurReport: state.saboteurReport,
+      },
+      null,
+      2,
+    ),
+  );
 }
 
 main().catch((err) => {
-  log("fatal", `Pipeline crashed: ${err instanceof Error ? err.message : String(err)}`);
+  log(
+    "fatal",
+    `Pipeline crashed: ${err instanceof Error ? err.message : String(err)}`,
+  );
   if (err instanceof Error && err.stack) {
     process.stderr.write(err.stack + "\n");
   }
